@@ -8,6 +8,7 @@ import Rentals from './views/Rentals.jsx';
 import Calendar from './views/Calendar.jsx';
 import Finances from './views/Finances.jsx';
 import Maintenance from './views/Maintenance.jsx';
+import AuditLog from './views/AuditLog.jsx';
 
 export const CURRENCIES = ['EUR', 'USD', 'TRY'];
 const SYM = { EUR: '€', USD: '$', TRY: '₺' };
@@ -90,6 +91,7 @@ export default function App() {
             ['clients',     'Клиенты'],
             ['finances',    'Финансы'],
             ['maintenance', 'Техсостояние'],
+            ['audit',       'Журнал'],
           ].map(([key, label]) => (
             <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}</button>
           ))}
@@ -168,6 +170,7 @@ export default function App() {
           {tab === 'clients'     && <Clients />}
           {tab === 'finances'    && <Finances />}
           {tab === 'maintenance' && <Maintenance cars={cars} />}
+          {tab === 'audit'       && <AuditLog />}
         </div>
       </div>
     </div>

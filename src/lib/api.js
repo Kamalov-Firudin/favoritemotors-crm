@@ -18,7 +18,26 @@ async function q(promise) {
   return data;
 }
 
-// ─── Машины ───────────────────────────────────────────────────────────────
+// ─── Аудит лог ────────────────────────────────────────────────────────────
+async function audit(action, table_name, record_id, description) {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase.from('audit_log').insert({
+      user_email: user.email,
+      action,
+      table_name,
+      record_id: record_id || null,
+      description,
+    });
+  } catch (e) { /* не блокируем основную операцию */ }
+}
+
+export const auditLog = {
+  list: () => q(supabase.from('audit_log').select('*').order('created_at', { ascending: false }).limit(500)),
+};
+
+
 export const cars = {
   list: () => q(supabase.from('cars').select('*').neq('status', 'hidden').order('name')),
   listAll: () => q(supabase.from('cars').select('*').order('name')),
@@ -26,16 +45,19 @@ export const cars = {
     const name = carName(c);
     const { data, error } = await supabase.from('cars').insert({ ...c, name }).select().single();
     if (error) throw new Error(error.message);
+    await audit('create', 'cars', data.id, `Добавлена машина: ${name}`);
     return data;
   },
   update: async (c) => {
     const name = carName(c);
     const { error } = await supabase.from('cars').update({ ...c, name }).eq('id', c.id);
     if (error) throw new Error(error.message);
+    await audit('update', 'cars', c.id, `Изменена машина: ${name}`);
   },
   remove: async (id) => {
     const { error } = await supabase.from('cars').delete().eq('id', id);
     if (error) throw new Error(error.message);
+    await audit('delete', 'cars', id, `Удалена машина #${id}`);
   },
 };
 
@@ -46,16 +68,19 @@ export const clients = {
     const name = clientName(c);
     const { data, error } = await supabase.from('clients').insert({ ...c, name }).select().single();
     if (error) throw new Error(error.message);
+    await audit('create', 'clients', data.id, `Добавлен клиент: ${name}`);
     return data;
   },
   update: async (c) => {
     const name = clientName(c);
     const { error } = await supabase.from('clients').update({ ...c, name }).eq('id', c.id);
     if (error) throw new Error(error.message);
+    await audit('update', 'clients', c.id, `Изменён клиент: ${name}`);
   },
   remove: async (id) => {
     const { error } = await supabase.from('clients').delete().eq('id', id);
     if (error) throw new Error(error.message);
+    await audit('delete', 'clients', id, `Удалён клиент #${id}`);
   },
 };
 
@@ -104,6 +129,7 @@ export const rentals = {
     if (conflict) throw new Error(`CONFLICT|${conflict.clients?.name}|${conflict.issued_at}|${conflict.returned_at || conflict.due_at || ''}`);
     const { data, error } = await supabase.from('rentals').insert(r).select().single();
     if (error) throw new Error(error.message);
+    await audit('create', 'rentals', data.id, `Создана бронь/аренда #${data.id} · машина #${r.car_id}`);
     return data;
   },
   update: async (r) => {
@@ -112,10 +138,13 @@ export const rentals = {
     const { id, cars: _c, clients: _cl, car_name, car_plate, client_name, client_phone, ...rest } = r;
     const { error } = await supabase.from('rentals').update(rest).eq('id', id);
     if (error) throw new Error(error.message);
+    const action = rest.status === 'completed' ? `Возврат машины (аренда #${id})` : rest.status === 'active' ? `Выдача машины (аренда #${id})` : rest.status === 'cancelled' ? `Отмена брони #${id}` : `Изменена аренда #${id}`;
+    await audit('update', 'rentals', id, action);
   },
   remove: async (id) => {
     const { error } = await supabase.from('rentals').delete().eq('id', id);
     if (error) throw new Error(error.message);
+    await audit('delete', 'rentals', id, `Удалена запись аренды #${id}`);
   },
 };
 
@@ -127,17 +156,37 @@ export const carExpenses = {
     if (error) throw new Error(error.message);
     return data.map(e => ({ ...e, car_name: e.cars?.name }));
   },
-  create: (e) => q(supabase.from('car_expenses').insert(e).select().single()),
-  update: ({ id, cars: _c, car_name, ...rest }) => q(supabase.from('car_expenses').update(rest).eq('id', id)),
-  remove: (id) => q(supabase.from('car_expenses').delete().eq('id', id)),
+  create: async (e) => {
+    const data = await q(supabase.from('car_expenses').insert(e).select().single());
+    await audit('create', 'car_expenses', data.id, `Расход машины: ${e.description} · ${(e.amount/100).toFixed(2)} ${e.currency}`);
+    return data;
+  },
+  update: async ({ id, cars: _c, car_name, ...rest }) => {
+    await q(supabase.from('car_expenses').update(rest).eq('id', id));
+    await audit('update', 'car_expenses', id, `Изменён расход машины #${id}: ${rest.description}`);
+  },
+  remove: async (id) => {
+    await q(supabase.from('car_expenses').delete().eq('id', id));
+    await audit('delete', 'car_expenses', id, `Удалён расход машины #${id}`);
+  },
 };
 
 // ─── Расходы офиса ────────────────────────────────────────────────────────
 export const officeExpenses = {
   list: () => q(supabase.from('office_expenses').select('*').order('date', { ascending: false })),
-  create: (e) => q(supabase.from('office_expenses').insert(e).select().single()),
-  update: ({ id, ...rest }) => q(supabase.from('office_expenses').update(rest).eq('id', id)),
-  remove: (id) => q(supabase.from('office_expenses').delete().eq('id', id)),
+  create: async (e) => {
+    const data = await q(supabase.from('office_expenses').insert(e).select().single());
+    await audit('create', 'office_expenses', data.id, `Расход офиса: ${e.description} · ${(e.amount/100).toFixed(2)} ${e.currency}`);
+    return data;
+  },
+  update: async ({ id, ...rest }) => {
+    await q(supabase.from('office_expenses').update(rest).eq('id', id));
+    await audit('update', 'office_expenses', id, `Изменён расход офиса #${id}: ${rest.description}`);
+  },
+  remove: async (id) => {
+    await q(supabase.from('office_expenses').delete().eq('id', id));
+    await audit('delete', 'office_expenses', id, `Удалён расход офиса #${id}`);
+  },
 };
 
 // ─── Техсостояние ─────────────────────────────────────────────────────────
