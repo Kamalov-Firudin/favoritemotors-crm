@@ -1,7 +1,7 @@
 // src/lib/backup.js
 import { supabase } from './supabase.js';
 
-const TABLES = ['cars', 'clients', 'rentals', 'car_expenses', 'office_expenses', 'maintenance'];
+const TABLES = ['cars', 'clients', 'rentals', 'car_expenses', 'office_expenses', 'maintenance', 'audit_log'];
 
 export async function exportBackup() {
   const backup = {
