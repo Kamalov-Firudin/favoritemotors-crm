@@ -36,8 +36,12 @@ export default function Cars({ onChange }) {
       ...form,
       brand: t(form.brand), model: t(form.model), plate: t(form.plate),
       body_type: t(form.body_type), color: t(form.color), transmission: t(form.transmission) || null,
-      purchase_date: t(form.purchase_date),
-      purchase_price: toMinor(form.purchase_price), note: t(form.note),
+      year: form.year ? Number(form.year) : null,
+      seats: form.seats ? Number(form.seats) : null,
+      mileage: form.mileage ? Number(form.mileage) : 0,
+      purchase_date: t(form.purchase_date) || null,
+      purchase_price: toMinor(form.purchase_price),
+      note: t(form.note),
     };
     try {
       if (form.id) await carsApi.update(payload);

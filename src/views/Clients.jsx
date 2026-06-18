@@ -46,10 +46,13 @@ export default function Clients() {
       ...form,
       first_name: t(form.first_name), last_name: t(form.last_name), middle_name: t(form.middle_name),
       phone: t(form.phone), phone2: t(form.phone2), email: t(form.email),
-      birth_date: t(form.birth_date), source: t(form.source),
+      birth_date: t(form.birth_date) || null,
+      source: t(form.source),
       passport_number: t(form.passport_number), country: t(form.country),
-      license_number: t(form.license_number), license_issued: t(form.license_issued),
+      license_number: t(form.license_number),
+      license_issued: t(form.license_issued) || null,
       note: t(form.note),
+      discount: Number(form.discount) || 0,
     };
     if (form.id) await clientsApi.update(payload);
     else await clientsApi.create(payload);
