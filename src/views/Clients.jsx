@@ -6,8 +6,8 @@ const CATEGORIES = ['Обычный', 'Постоянный', 'Лояльный'
 const EMPTY = {
   first_name: '', last_name: '', middle_name: '', phone: '', phone2: '', email: '',
   birth_date: '', source: '', category: 'Обычный',
-  passport_photo: null, passport_number: '', country: '',
-  license_photo: null, license_number: '', license_issued: '',
+  passport_number: '', country: '',
+  license_number: '', license_issued: '',
   discount: '', note: '',
 };
 
