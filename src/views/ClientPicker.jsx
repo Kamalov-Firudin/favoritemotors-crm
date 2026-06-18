@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
+import { clients as clientsApi } from '../lib/api.js';
 
 const LIMIT = 25;
 

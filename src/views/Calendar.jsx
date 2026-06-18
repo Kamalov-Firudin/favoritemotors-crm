@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { cars as carsApi, rentals as rentalsApi } from '../lib/api.js';
 import { fromMinor } from '../App.jsx';
 import BookingForm from './BookingForm.jsx';
 

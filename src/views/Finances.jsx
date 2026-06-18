@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { cars as carsApi, carExpenses, officeExpenses, CAR_EXPENSE_CATS, OFFICE_EXPENSE_CATS } from '../lib/api.js';
 import { CURRENCIES, toMinor, fromMinor, fmtMoney, fmtDate } from '../App.jsx';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -151,15 +152,7 @@ export default function Finances() {
   const displayRentals = filterCar ? filteredRentals.filter((r) => String(r.car_id) === filterCar) : filteredRentals;
 
   const exportReport = async () => {
-    setExporting(true);
-    try {
-      const filePath = await window.api.report.export({ from: reportFrom, to: reportTo });
-      if (filePath) alert(`Отчёт сохранён:\n${filePath}`);
-    } catch (e) {
-      alert('Ошибка при экспорте: ' + e.message);
-    } finally {
-      setExporting(false);
-    }
+    alert('Экспорт в Excel доступен в десктопной версии приложения.');
   };
 
   // Данные для раздела «Отчёт»

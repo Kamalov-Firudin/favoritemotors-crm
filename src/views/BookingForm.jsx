@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { cars as carsApi, clients as clientsApi, rentals as rentalsApi } from '../lib/api.js';
 import { CURRENCIES } from '../App.jsx';
 import ClientPicker from './ClientPicker.jsx';
 
