@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { cars as carsApi, carExpenses, officeExpenses, CAR_EXPENSE_CATS, OFFICE_EXPENSE_CATS } from '../lib/api.js';
+import { cars as carsApi, rentals as rentalsApi, carExpenses, officeExpenses, CAR_EXPENSE_CATS, OFFICE_EXPENSE_CATS } from '../lib/api.js';
 import { CURRENCIES, toMinor, fromMinor, fmtMoney, fmtDate } from '../App.jsx';
 
 const today = () => new Date().toISOString().slice(0, 10);
