@@ -230,28 +230,6 @@ export default function Finances() {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          {/* Доходы */}
-          <div className="card" style={{ gridColumn: '1 / -1' }}>
-            <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <b style={{ fontSize: 13 }}>Доходы — из аренд</b>
-              <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{displayRentals.length} записей</span>
-            </div>
-            {displayRentals.length === 0 ? <div className="empty" style={{ padding: '20px' }}><b>Нет завершённых аренд за этот период</b></div> : (
-              <div style={{ maxHeight: 240, overflowY: 'auto' }}>
-                <table>
-                  <thead><tr><th>Клиент</th><th>Машина</th><th>Выдана</th><th>Возврат</th><th>Сумма</th></tr></thead>
-                  <tbody>{displayRentals.map((r) => (
-                    <tr key={r.id}>
-                      <td><b>{r.client_name}</b></td><td className="muted">{r.car_name}</td>
-                      <td className="mono muted">{fmtDate(r.issued_at)}</td>
-                      <td className="mono muted">{r.returned_at ? fmtDate(r.returned_at) : (r.due_at ? fmtDate(r.due_at) : '—')}</td>
-                      <td className="mono" style={{ color: '#3B6D11', fontWeight: 500 }}>{fmtMoney(r.amount, r.currency)}</td>
-                    </tr>
-                  ))}</tbody>
-                </table>
-              </div>
-            )}
-          </div>
 
           {/* Расходы машин */}
           <div className="card">
@@ -260,7 +238,7 @@ export default function Finances() {
               <button className="btn sm" onClick={() => setCarForm({ ...EMPTY_CAR_EXP })}>+ Добавить</button>
             </div>
             {displayCarExp.length === 0 ? <div className="empty" style={{ padding: '20px' }}><b>Расходов нет за этот период</b></div> : (
-              <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+              <div style={{ maxHeight: 260, overflowY: 'auto' }}>
                 <table>
                   <thead><tr><th>Дата</th><th>Машина</th><th>Описание</th><th>Сумма</th><th></th></tr></thead>
                   <tbody>{displayCarExp.map((e) => (
@@ -290,7 +268,7 @@ export default function Finances() {
               <button className="btn sm" onClick={() => setOffForm({ ...EMPTY_OFF_EXP })}>+ Добавить</button>
             </div>
             {filteredOffExp.length === 0 ? <div className="empty" style={{ padding: '20px' }}><b>Расходов нет за этот период</b></div> : (
-              <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+              <div style={{ maxHeight: 260, overflowY: 'auto' }}>
                 <table>
                   <thead><tr><th>Дата</th><th>Категория</th><th>Описание</th><th>Сумма</th><th></th></tr></thead>
                   <tbody>{filteredOffExp.map((e) => (
@@ -311,6 +289,33 @@ export default function Finances() {
                 </table>
               </div>
             )}
+          </div>
+
+          {/* Доходы — полная ширина внизу со скроллом */}
+          <div className="card" style={{ gridColumn: '1 / -1' }}>
+            <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <b style={{ fontSize: 13 }}>Доходы — из аренд</b>
+              <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{displayRentals.length} записей</span>
+            </div>
+            {displayRentals.length === 0
+              ? <div className="empty" style={{ padding: '20px' }}><b>Нет завершённых аренд за этот период</b></div>
+              : (
+                <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+                  <table>
+                    <thead><tr><th>Клиент</th><th>Машина</th><th>Выдана</th><th>Возврат</th><th>Сумма</th></tr></thead>
+                    <tbody>{displayRentals.map((r) => (
+                      <tr key={r.id}>
+                        <td><b>{r.client_name}</b></td>
+                        <td className="muted">{r.car_name}</td>
+                        <td className="mono muted">{fmtDate(r.issued_at)}</td>
+                        <td className="mono muted">{r.returned_at ? fmtDate(r.returned_at) : (r.due_at ? fmtDate(r.due_at) : '—')}</td>
+                        <td className="mono" style={{ color: '#3B6D11', fontWeight: 500 }}>{fmtMoney(r.amount, r.currency)}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )
+            }
           </div>
         </div>
       </>)}
