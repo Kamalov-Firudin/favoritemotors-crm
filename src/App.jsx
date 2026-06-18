@@ -9,6 +9,7 @@ import Calendar from './views/Calendar.jsx';
 import Finances from './views/Finances.jsx';
 import Maintenance from './views/Maintenance.jsx';
 import AuditLog from './views/AuditLog.jsx';
+import { exportBackup } from './lib/backup.js';
 
 export const CURRENCIES = ['EUR', 'USD', 'TRY'];
 const SYM = { EUR: '€', USD: '$', TRY: '₺' };
@@ -66,6 +67,20 @@ export default function App() {
   const unread = Math.max(0, notifications.length - readCount);
   const openNotif = () => { setNotifOpen(v => { if (!v) setReadCount(notifications.length); return !v; }); };
   const goToTab = (t) => { setTab(t); setNotifOpen(false); };
+  const [backingUp, setBackingUp] = useState(false);
+  const doBackup = async () => {
+    setBackingUp(true);
+    try {
+      const tables = await exportBackup();
+      const total = Object.values(tables).reduce((s, t) => s + t.length, 0);
+      alert(`Бэкап скачан успешно.\nВсего записей: ${total}`);
+    } catch (e) {
+      alert('Ошибка: ' + e.message);
+    } finally {
+      setBackingUp(false);
+    }
+  };
+
   const signOut = () => supabase.auth.signOut();
 
   // Загрузка
@@ -97,7 +112,12 @@ export default function App() {
           ))}
         </nav>
         <div className="rail-foot">
-          <button className="backup-btn" onClick={signOut} style={{ opacity: 0.7 }}>Выйти ({session.user.email})</button>
+          <button className="backup-btn" onClick={doBackup} disabled={backingUp}>
+            {backingUp ? 'Выгрузка...' : '↓ Скачать бэкап'}
+          </button>
+          <button className="backup-btn" onClick={signOut} style={{ marginTop: 4, opacity: 0.7 }}>
+            Выйти ({session.user.email})
+          </button>
         </div>
       </aside>
 
