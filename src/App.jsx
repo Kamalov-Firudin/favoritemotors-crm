@@ -27,7 +27,9 @@ const TYPE_STYLE = {
 
 export default function App() {
   const [session, setSession] = useState(undefined); // undefined = loading
-  const [tab, setTab] = useState('bookings');
+  const [tab, setTab] = useState(() => localStorage.getItem('fm_tab') || 'bookings');
+
+  const switchTab = (t) => { setTab(t); localStorage.setItem('fm_tab', t); };
   const [stats, setStats] = useState({ total: 0, out: 0, free: 0, reserved: 0, maintenance: 0 });
   const [cars, setCars] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -66,7 +68,7 @@ export default function App() {
 
   const unread = Math.max(0, notifications.length - readCount);
   const openNotif = () => { setNotifOpen(v => { if (!v) setReadCount(notifications.length); return !v; }); };
-  const goToTab = (t) => { setTab(t); setNotifOpen(false); };
+  const goToTab = (t) => { switchTab(t); setNotifOpen(false); };
   const [backingUp, setBackingUp] = useState(false);
   const doBackup = async () => {
     setBackingUp(true);
@@ -108,7 +110,7 @@ export default function App() {
             ['maintenance', 'Техсостояние'],
             ['audit',       'Журнал'],
           ].map(([key, label]) => (
-            <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}</button>
+            <button key={key} className={tab === key ? 'active' : ''} onClick={() => switchTab(key)}>{label}</button>
           ))}
         </nav>
         <div className="rail-foot">
