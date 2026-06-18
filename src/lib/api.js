@@ -55,9 +55,10 @@ export const cars = {
     await audit('update', 'cars', c.id, `Изменена машина: ${name}`);
   },
   remove: async (id) => {
+    const { data: c } = await supabase.from('cars').select('name').eq('id', id).single();
     const { error } = await supabase.from('cars').delete().eq('id', id);
     if (error) throw new Error(error.message);
-    await audit('delete', 'cars', id, `Удалена машина #${id}`);
+    await audit('delete', 'cars', id, `Удалена машина: ${c?.name || '#' + id}`);
   },
 };
 
@@ -78,9 +79,11 @@ export const clients = {
     await audit('update', 'clients', c.id, `Изменён клиент: ${name}`);
   },
   remove: async (id) => {
+    // Сначала получаем имя для журнала
+    const { data: c } = await supabase.from('clients').select('name').eq('id', id).single();
     const { error } = await supabase.from('clients').delete().eq('id', id);
     if (error) throw new Error(error.message);
-    await audit('delete', 'clients', id, `Удалён клиент #${id}`);
+    await audit('delete', 'clients', id, `Удалён клиент: ${c?.name || '#' + id}`);
   },
 };
 
