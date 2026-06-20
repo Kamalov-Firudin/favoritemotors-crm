@@ -1,9 +1,8 @@
 // backup/backup-to-drive.mjs
-// Читает все таблицы из Supabase (сервисным ключом, минуя RLS — попадают и скрытые
-// строки) и заливает один JSON-файл в папку Google Drive. Имя файла с датой-временем,
-// предыдущие НЕ перезаписываются. При любой ошибке выходит с кодом 1 — тогда GitHub
-// присылает письмо о провале.
-import { createClient } from '@supabase/supabase-js';
+// Читает все таблицы из Supabase напрямую через REST (сервисным ключом, минуя RLS —
+// попадают и скрытые строки) и заливает один JSON-файл в папку Google Drive.
+// Имя файла с датой-временем, предыдущие НЕ перезаписываются. При любой ошибке
+// выходит с кодом 1 — тогда GitHub присылает письмо о провале.
 import { google } from 'googleapis';
 import { Readable } from 'node:stream';
 
@@ -21,16 +20,22 @@ function fail(msg) { console.error('❌ BACKUP FAILED:', msg); process.exit(1); 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) fail('нет SUPABASE_URL / SUPABASE_SERVICE_KEY');
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REFRESH_TOKEN || !DRIVE_FOLDER_ID) fail('нет Google-секретов');
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
+const base = SUPABASE_URL.replace(/\/+$/, '');
+const headers = { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` };
 
 async function dumpTable(t) {
-  let all = [], from = 0;
+  let all = [], offset = 0;
   for (;;) {
-    const { data, error } = await supabase.from(t).select('*').range(from, from + PAGE - 1);
-    if (error) throw new Error(`таблица ${t}: ${error.message}`);
-    all = all.concat(data);
-    if (data.length < PAGE) break;
-    from += PAGE;
+    const url = `${base}/rest/v1/${t}?select=*&limit=${PAGE}&offset=${offset}`;
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`таблица ${t}: HTTP ${res.status} ${body.slice(0, 200)}`);
+    }
+    const rows = await res.json();
+    all = all.concat(rows);
+    if (rows.length < PAGE) break;
+    offset += PAGE;
   }
   return all;
 }
@@ -42,7 +47,7 @@ async function main() {
     console.log(`  ${t}: ${backup.tables[t].length} строк`);
   }
   const totalRows = Object.values(backup.tables).reduce((s, a) => s + a.length, 0);
-  if (totalRows === 0) fail('все таблицы пусты — не загружаю пустой бэкап');
+  if (totalRows === 0) fail('все таблицы пусты — не загружаю пустой бэкап (проверь, что ключ именно service_role/secret)');
 
   const json = JSON.stringify(backup, null, 2);
 
