@@ -1,0 +1,11 @@
+{
+  "name": "favoritemotors-backup",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Автобэкап Supabase → Google Drive",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.0",
+    "googleapis": "^144.0.0"
+  }
+}

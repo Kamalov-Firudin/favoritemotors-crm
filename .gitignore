@@ -1,0 +1,5 @@
+
+# backup secrets — НИКОГДА не коммитить
+backup/oauth_client.json
+backup/node_modules/
+backup/*token*.json

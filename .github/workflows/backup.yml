@@ -1,0 +1,33 @@
+name: Backup to Google Drive
+
+# Время указано в UTC. У тебя UTC+3, поэтому:
+#   13:00 по-местному = 10:00 UTC  (обед)
+#   20:00 по-местному = 17:00 UTC  (вечер)
+# Чтобы сдвинуть — поменяй часы в строках cron (минус 3 от местного времени).
+on:
+  schedule:
+    - cron: '0 10 * * *'   # 13:00 МСК/Турция
+    - cron: '0 17 * * *'   # 20:00 МСК/Турция
+  workflow_dispatch:        # кнопка ручного запуска (для теста)
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install deps
+        working-directory: backup
+        run: npm install --no-audit --no-fund
+      - name: Run backup
+        working-directory: backup
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+        run: node backup-to-drive.mjs
