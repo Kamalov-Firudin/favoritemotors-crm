@@ -5,7 +5,8 @@ import { fromMinor } from '../App.jsx';
 import BookingForm from './BookingForm.jsx';
 
 const CW = 40;                       // ширина колонки дня
-const DAYS = 30;                     // окно в днях (месяц)
+const DAYS = 30;                     // окно в днях (месяц виден целиком)
+const STEP = 14;                     // шаг прокрутки стрелкой (2 недели)
 const WD = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
 const MON = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -77,9 +78,9 @@ export default function Calendar({ onChange }) {
         <h1>Календарь</h1>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span className="muted" style={{ marginRight: 8, textTransform: 'capitalize' }}>{monthLabel()}</span>
-          <button className="btn ghost sm" onClick={() => setStart(addDays(start, -DAYS))}>←</button>
+          <button className="btn ghost sm" onClick={() => setStart(addDays(start, -STEP))}>←</button>
           <button className="btn ghost sm" onClick={() => setStart(addDays(todayIso(), -2))}>Сегодня</button>
-          <button className="btn ghost sm" onClick={() => setStart(addDays(start, DAYS))}>→</button>
+          <button className="btn ghost sm" onClick={() => setStart(addDays(start, STEP))}>→</button>
         </div>
       </div>
 
