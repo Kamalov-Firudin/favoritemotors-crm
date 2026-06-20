@@ -20,6 +20,12 @@ export const toMinor = (s) => { const n = parseFloat(String(s ?? '').replace(','
 export const fromMinor = (m) => (Number(m || 0) / 100).toFixed(2);
 export const fmtMoney = (m, cur) => `${fromMinor(m)} ${SYM[cur] || cur || ''}`.trim();
 export const fmtDate = (d) => (d ? d.split('-').reverse().join('.') : '—');
+export const rentalDays = (start, end) => {
+  if (!start || !end) return 0;
+  const ms = Date.parse(end + 'T00:00:00Z') - Date.parse(start + 'T00:00:00Z');
+  if (!Number.isFinite(ms)) return 0;
+  return Math.max(1, Math.ceil(ms / 86400000));
+};
 
 const TYPE_STYLE = {
   overdue: { dot: '#b4472b', bg: '#fdf0ed', text: '#7a2710' },

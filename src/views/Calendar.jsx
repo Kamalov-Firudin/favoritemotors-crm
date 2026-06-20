@@ -5,7 +5,7 @@ import { fromMinor } from '../App.jsx';
 import BookingForm from './BookingForm.jsx';
 
 const CW = 40;                       // ширина колонки дня
-const DAYS = 14;                     // окно в днях
+const DAYS = 30;                     // окно в днях (месяц)
 const WD = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
 const MON = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -65,6 +65,8 @@ export default function Calendar({ onChange }) {
     ...r, due_at: r.due_at || '', returned_at: r.returned_at || '',
     pickup_location: r.pickup_location || '', return_location: r.return_location || '',
     amount: fromMinor(r.amount), paid: r.paid ? fromMinor(r.paid) : '', deposit: r.deposit ? fromMinor(r.deposit) : '',
+    daily_price: r.daily_price != null ? fromMinor(r.daily_price) : '', extra_fee: r.extra_fee != null ? fromMinor(r.extra_fee) : '',
+    extra_note: r.extra_note || '', km_out: r.km_out ?? '', km_in: r.km_in ?? '',
     });
   };
   const onSaved = async () => { setForm(null); await load(); onChange?.(); };
@@ -75,9 +77,9 @@ export default function Calendar({ onChange }) {
         <h1>Календарь</h1>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span className="muted" style={{ marginRight: 8, textTransform: 'capitalize' }}>{monthLabel()}</span>
-          <button className="btn ghost sm" onClick={() => setStart(addDays(start, -7))}>←</button>
+          <button className="btn ghost sm" onClick={() => setStart(addDays(start, -DAYS))}>←</button>
           <button className="btn ghost sm" onClick={() => setStart(addDays(todayIso(), -2))}>Сегодня</button>
-          <button className="btn ghost sm" onClick={() => setStart(addDays(start, 7))}>→</button>
+          <button className="btn ghost sm" onClick={() => setStart(addDays(start, DAYS))}>→</button>
         </div>
       </div>
 
