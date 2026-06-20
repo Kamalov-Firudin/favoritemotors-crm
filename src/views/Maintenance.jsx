@@ -293,7 +293,7 @@ export default function Maintenance({ cars }) {
 
       {/* Форма добавления/редактирования */}
       {form && (
-        <div className="overlay" onClick={(e) => e.target.className === 'overlay' && setForm(null)}>
+        <div className="overlay">
           <div className="modal" style={{ maxWidth: 540 }}>
             <div className="modal-head">
               <h3>{form.id ? 'Изменить запись' : 'Новая запись техсостояния'}</h3>

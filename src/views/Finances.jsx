@@ -179,11 +179,15 @@ export default function Finances() {
     }, 0);
     const inc = sumByCurrency(cRentals);
     const exp = sumByCurrency(cExp);
+    const km = cRentals.reduce((acc, r) => {
+      if (r.km_out != null && r.km_in != null && r.km_in >= r.km_out) return acc + (r.km_in - r.km_out);
+      return acc;
+    }, 0);
     const profit = {};
     new Set([...Object.keys(inc), ...Object.keys(exp)]).forEach(cur => {
       profit[cur] = (inc[cur] || 0) - (exp[cur] || 0);
     });
-    return { car, days, rentals: cRentals.length, inc, exp, profit };
+    return { car, days, rentals: cRentals.length, inc, exp, profit, km };
   }).filter(r => r.rentals > 0 || Object.keys(r.inc).length > 0);
 
   return (
@@ -387,13 +391,14 @@ export default function Finances() {
                   <th>Машина</th>
                   <th>Аренд</th>
                   <th>Дней</th>
+                  <th>Км</th>
                   <th>Доход</th>
                   <th>Расходы</th>
                   <th>Прибыль</th>
                 </tr>
               </thead>
               <tbody>
-                {carReport.map(({ car, days, rentals: rCount, inc, exp, profit }) => (
+                {carReport.map(({ car, days, rentals: rCount, inc, exp, profit, km }) => (
                   <tr key={car.id}>
                     <td>
                       <b>{car.name}</b>
@@ -401,6 +406,7 @@ export default function Finances() {
                     </td>
                     <td className="mono">{rCount}</td>
                     <td className="mono">{days}</td>
+                    <td className="mono">{km > 0 ? `${km.toLocaleString()} км` : '—'}</td>
                     <td>{CURRENCIES.filter(c => inc[c]).map(c => (
                       <div key={c} style={{ fontSize: 12, color: '#3B6D11', fontWeight: 500 }}>{fmtMoney(inc[c], c)}</div>
                     ))}</td>
@@ -420,7 +426,7 @@ export default function Finances() {
 
       {/* Формы добавления расходов (общие для обеих вкладок) */}
       {carForm && (
-        <div className="overlay" onClick={(e) => e.target.className === 'overlay' && setCarForm(null)}>
+        <div className="overlay">
           <div className="modal" style={{ maxWidth: 480 }}>
             <div className="modal-head"><h3>{carForm.id ? 'Изменить расход' : 'Расход машины'}</h3><button className="x" onClick={() => setCarForm(null)}>×</button></div>
             <div className="modal-body">
@@ -456,7 +462,7 @@ export default function Finances() {
       )}
 
       {offForm && (
-        <div className="overlay" onClick={(e) => e.target.className === 'overlay' && setOffForm(null)}>
+        <div className="overlay">
           <div className="modal" style={{ maxWidth: 480 }}>
             <div className="modal-head"><h3>{offForm.id ? 'Изменить расход' : 'Расход офиса'}</h3><button className="x" onClick={() => setOffForm(null)}>×</button></div>
             <div className="modal-body">

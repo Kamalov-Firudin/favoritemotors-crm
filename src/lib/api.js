@@ -297,16 +297,23 @@ export const maintenance = {
     await audit('delete', 'maintenance', id, `Удалена запись техсостояния: ${m?.cars?.name || '#' + id}`);
   },
   // обновить текущий пробег машины (вызывается при возврате аренды).
-  // Не понижаем одометр; если записи техсостояния у машины нет — тихо пропускаем.
+  // Не понижаем одометр. Если записи техсостояния у машины нет — создаём её,
+  // чтобы пробег всегда статично записывался и работало уведомление о масле.
   setCurrentKm: async (car_id, km) => {
     if (!car_id || !Number.isFinite(Number(km))) return false;
     const { data: rows } = await supabase.from('maintenance').select('id, current_km').eq('car_id', car_id).limit(1);
-    if (!rows || !rows.length) return false;
-    const row = rows[0];
-    if (row.current_km != null && Number(km) < Number(row.current_km)) return false;
-    const { error } = await supabase.from('maintenance').update({ current_km: Number(km) }).eq('id', row.id);
+    if (rows && rows.length) {
+      const row = rows[0];
+      if (row.current_km != null && Number(km) < Number(row.current_km)) return false; // не понижаем
+      const { error } = await supabase.from('maintenance').update({ current_km: Number(km) }).eq('id', row.id);
+      if (error) throw new Error(error.message);
+      await audit('update', 'maintenance', row.id, `Пробег обновлён при возврате: ${Number(km).toLocaleString()} км`);
+      return true;
+    }
+    // записи нет — создаём минимальную
+    const { data: created, error } = await supabase.from('maintenance').insert({ car_id, current_km: Number(km) }).select().single();
     if (error) throw new Error(error.message);
-    await audit('update', 'maintenance', row.id, `Пробег обновлён при возврате: ${Number(km).toLocaleString()} км`);
+    await audit('create', 'maintenance', created.id, `Создана запись техсостояния, пробег: ${Number(km).toLocaleString()} км`);
     return true;
   },
 };

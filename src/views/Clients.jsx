@@ -122,7 +122,7 @@ export default function Clients() {
       </div>
 
       {form && (
-        <div className="overlay" onClick={(e) => e.target.className === 'overlay' && setForm(null)}>
+        <div className="overlay">
           <div className="modal">
             <div className="modal-head"><h3>{form.id ? 'Изменить клиента' : 'Новый клиент'}</h3><button className="x" onClick={() => setForm(null)}>×</button></div>
             <div className="modal-body">

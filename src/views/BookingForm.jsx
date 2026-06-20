@@ -77,7 +77,7 @@ export default function BookingForm({ initial, cars, clients, onClose, onSaved }
   const selClient = clients.find((c) => c.id === Number(form.client_id));
 
   return (
-    <div className="overlay" onClick={(e) => e.target.className === 'overlay' && onClose()}>
+    <div className="overlay">
       <div className="modal">
         <div className="modal-head"><h3>{form.id ? (form.status === 'reserved' ? 'Изменить бронь' : 'Изменить аренду') : (isActive ? 'Новая аренда' : 'Новая бронь')}</h3><button className="x" onClick={onClose}>×</button></div>
         <div className="modal-body">

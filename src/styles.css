@@ -73,7 +73,7 @@ tr:last-child td { border-bottom: none; }
 tr:hover td { background: #fbf9f4; }
 .mono { font-family: var(--mono); }
 .muted { color: var(--ink-soft); }
-.row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.row-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
 
 .badge { display: inline-block; font-size: 11px; padding: 3px 9px; border-radius: 999px; font-weight: 600; }
 .badge.free { background: #e7f0e9; color: var(--ok); }

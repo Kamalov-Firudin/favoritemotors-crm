@@ -196,7 +196,7 @@ export default function Rentals({ mode, onChange }) {
           <table>
             <thead><tr>
               <th>Машина</th><th>Клиент</th><th>{isBooking ? 'С' : 'Выдана'}</th><th>{isBooking ? 'По' : 'Возврат'}</th>
-              <th>Выдача</th><th>Приём</th><th>Сумма</th><th>Долг</th><th>Статус</th><th></th>
+              <th>Выдача</th><th>Приём</th><th>Пробег</th><th>Сумма</th><th>Долг</th><th>Статус</th><th></th>
             </tr></thead>
             <tbody>
               {rows.map((r) => (
@@ -207,6 +207,14 @@ export default function Rentals({ mode, onChange }) {
                   <td className="mono muted">{r.returned_at ? fmtDate(r.returned_at) : (r.due_at ? (isBooking ? fmtDate(r.due_at) : `до ${fmtDate(r.due_at)}`) : '—')}</td>
                   <td className="muted">{r.pickup_location || '—'}</td>
                   <td className="muted">{r.return_location || '—'}</td>
+                  <td className="mono muted">{(() => {
+                    if (r.km_out != null && r.km_in != null) {
+                      const d = r.km_in - r.km_out;
+                      return <span title={`${Number(r.km_out).toLocaleString()} → ${Number(r.km_in).toLocaleString()}`} style={d < 0 ? { color: 'var(--warn)' } : undefined}>{d.toLocaleString()} км</span>;
+                    }
+                    if (r.km_out != null) return <span title="пробег при выдаче" style={{ fontSize: 11 }}>от {Number(r.km_out).toLocaleString()}</span>;
+                    return '—';
+                  })()}</td>
                   <td className="mono">{fmtMoney(r.amount, r.currency)}</td>
                   <td className="mono" style={{ color: debt(r) > 0 ? 'var(--warn)' : 'var(--ink-soft)' }}>{debt(r) > 0 ? fmtMoney(debt(r), r.currency) : '—'}</td>
                   <td>{statusBadge(r)}</td>
@@ -230,7 +238,7 @@ export default function Rentals({ mode, onChange }) {
 
       {/* Выдача с пробегом */}
       {issueForm && (
-        <div className="overlay" onClick={(e) => e.target.className === 'overlay' && setIssueForm(null)}>
+        <div className="overlay">
           <div className="modal" style={{ maxWidth: 440 }}>
             <div className="modal-head"><h3>Выдача автомобиля</h3><button className="x" onClick={() => setIssueForm(null)}>×</button></div>
             <div className="modal-body">
@@ -251,7 +259,7 @@ export default function Rentals({ mode, onChange }) {
 
       {/* Продление */}
       {extendForm && (
-        <div className="overlay" onClick={(e) => e.target.className === 'overlay' && setExtendForm(null)}>
+        <div className="overlay">
           <div className="modal" style={{ maxWidth: 440 }}>
             <div className="modal-head"><h3>Продлить аренду</h3><button className="x" onClick={() => setExtendForm(null)}>×</button></div>
             <div className="modal-body">
@@ -278,7 +286,7 @@ export default function Rentals({ mode, onChange }) {
 
       {/* Возврат */}
       {returnForm && (
-        <div className="overlay" onClick={(e) => e.target.className === 'overlay' && setReturnForm(null)}>
+        <div className="overlay">
           <div className="modal" style={{ maxWidth: 520 }}>
             <div className="modal-head"><h3>Возврат автомобиля</h3><button className="x" onClick={() => setReturnForm(null)}>×</button></div>
             <div className="modal-body">

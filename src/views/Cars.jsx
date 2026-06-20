@@ -97,7 +97,7 @@ export default function Cars({ onChange }) {
       </div>
 
       {form && (
-        <div className="overlay" onClick={(e) => e.target.className === 'overlay' && setForm(null)}>
+        <div className="overlay">
           <div className="modal">
             <div className="modal-head"><h3>{form.id ? 'Изменить машину' : 'Новая машина'}</h3><button className="x" onClick={() => setForm(null)}>×</button></div>
             <div className="modal-body">

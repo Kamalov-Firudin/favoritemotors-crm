@@ -109,7 +109,7 @@ export default function CarCard({ car, rentals: allRentals, onClose, onChange })
   const set = (k) => (ev) => setExpForm({ ...expForm, [k]: ev.target.value });
 
   return (
-    <div className="overlay" onClick={(e) => e.target.className === 'overlay' && onClose()}>
+    <div className="overlay">
       <div className="modal" style={{ maxWidth: 780 }}>
         <div className="modal-head">
           <h3>
@@ -270,7 +270,7 @@ export default function CarCard({ car, rentals: allRentals, onClose, onChange })
 
       {/* Форма добавления/редактирования расхода */}
       {expForm && (
-        <div className="overlay" style={{ zIndex: 300 }} onClick={(e) => e.target.className === 'overlay' && setExpForm(null)}>
+        <div className="overlay" style={{ zIndex: 300 }}>
           <div className="modal" style={{ maxWidth: 480 }}>
             <div className="modal-head">
               <h3>{expForm.id ? 'Изменить расход' : 'Новый расход'}</h3>
