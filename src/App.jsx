@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from './lib/supabase.js';
-import { getStats, getNotifications } from './lib/api.js';
+import { getStats, getNotifications, getMyProfile } from './lib/api.js';
+import { PermsContext, permsForRole } from './lib/perms.js';
 import Login from './views/Login.jsx';
+import ForcePasswordChange from './views/ForcePasswordChange.jsx';
 import Cars from './views/Cars.jsx';
 import Clients from './views/Clients.jsx';
 import Rentals from './views/Rentals.jsx';
@@ -9,6 +11,7 @@ import Calendar from './views/Calendar.jsx';
 import Finances from './views/Finances.jsx';
 import Maintenance from './views/Maintenance.jsx';
 import AuditLog from './views/AuditLog.jsx';
+import Trash from './views/Trash.jsx';
 import { exportBackup } from './lib/backup.js';
 
 export const CURRENCIES = ['EUR', 'USD', 'TRY'];
@@ -27,6 +30,9 @@ const TYPE_STYLE = {
 
 export default function App() {
   const [session, setSession] = useState(undefined); // undefined = loading
+  const [role, setRole] = useState(null);
+  const [mustChange, setMustChange] = useState(false);
+  const perms = permsForRole(role);
   const [tab, setTab] = useState(() => localStorage.getItem('fm_tab') || 'bookings');
 
   const switchTab = (t) => { setTab(t); localStorage.setItem('fm_tab', t); };
@@ -43,6 +49,12 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => subscription.unsubscribe();
   }, []);
+
+  // Роль и флаг смены пароля
+  useEffect(() => {
+    if (!session) { setRole(null); setMustChange(false); return; }
+    getMyProfile().then(p => { setRole(p.role); setMustChange(p.mustChange); });
+  }, [session]);
 
   const refreshAll = useCallback(async () => {
     if (!session) return;
@@ -95,28 +107,42 @@ export default function App() {
   // Не авторизован
   if (!session) return <Login />;
 
+  // Первый вход — обязательная смена пароля
+  if (mustChange) return (
+    <ForcePasswordChange
+      email={session.user.email}
+      onDone={() => { setMustChange(false); getMyProfile().then(p => setRole(p.role)); }}
+    />
+  );
+
+  const NAV = [
+    ['bookings',    'Брони'],
+    ['rentals',     'Аренда'],
+    ['calendar',    'Календарь'],
+    ['cars',        'Машины'],
+    ['clients',     'Клиенты'],
+    ['finances',    'Финансы'],
+    ['maintenance', 'Техсостояние'],
+    ['audit',       'Журнал'],
+    ...(perms.canWrite ? [['trash', 'Корзина']] : []),
+  ];
+
   return (
+   <PermsContext.Provider value={perms}>
     <div className="app">
       <aside className="rail">
         <div className="brand">FavoriteMotors<small>учёт аренды</small></div>
         <nav className="nav">
-          {[
-            ['bookings',    'Брони'],
-            ['rentals',     'Аренда'],
-            ['calendar',    'Календарь'],
-            ['cars',        'Машины'],
-            ['clients',     'Клиенты'],
-            ['finances',    'Финансы'],
-            ['maintenance', 'Техсостояние'],
-            ['audit',       'Журнал'],
-          ].map(([key, label]) => (
+          {NAV.map(([key, label]) => (
             <button key={key} className={tab === key ? 'active' : ''} onClick={() => switchTab(key)}>{label}</button>
           ))}
         </nav>
         <div className="rail-foot">
-          <button className="backup-btn" onClick={doBackup} disabled={backingUp}>
-            {backingUp ? 'Выгрузка...' : '↓ Скачать бэкап'}
-          </button>
+          {perms.canWrite && (
+            <button className="backup-btn" onClick={doBackup} disabled={backingUp}>
+              {backingUp ? 'Выгрузка...' : '↓ Скачать бэкап'}
+            </button>
+          )}
           <button className="backup-btn" onClick={signOut} style={{ marginTop: 4, opacity: 0.7 }}>
             Выйти ({session.user.email})
           </button>
@@ -193,8 +219,10 @@ export default function App() {
           {tab === 'finances'    && <Finances />}
           {tab === 'maintenance' && <Maintenance cars={cars} />}
           {tab === 'audit'       && <AuditLog />}
+          {tab === 'trash'       && perms.canWrite && <Trash onChange={refreshAll} />}
         </div>
       </div>
     </div>
+   </PermsContext.Provider>
   );
 }

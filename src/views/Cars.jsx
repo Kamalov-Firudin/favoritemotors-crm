@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { cars as carsApi, rentals as rentalsApi } from '../lib/api.js';
 import { CURRENCIES, toMinor, fromMinor, fmtMoney } from '../App.jsx';
+import { usePerms } from '../lib/perms.js';
 import CarCard from './CarCard.jsx';
 
-const STATUS = [['free', 'Свободна'], ['maintenance', 'На ремонте'], ['hidden', 'Скрыта']];
+const STATUS = [['free', 'Свободна'], ['maintenance', 'На ремонте'], ['sold', 'Продана'], ['hidden', 'Скрыта']];
 const TRANSMISSIONS = ['Автомат', 'Робот', 'Механика', 'Вариатор'];
 const BODY_TYPES = ['Хетчбек', 'Седан', 'Универсал', 'Минивен', 'SUV'];
 const EMPTY = {
@@ -13,6 +14,7 @@ const EMPTY = {
 };
 
 export default function Cars({ onChange }) {
+  const { canWrite, canPurge } = usePerms();
   const [rows, setRows] = useState([]);
   const [rentals, setRentals] = useState([]);
   const [form, setForm] = useState(null);
@@ -54,17 +56,17 @@ export default function Cars({ onChange }) {
     setForm(null); await load(); onChange?.();
   };
 
-  const remove = async (c) => {
-    if (!confirm(`Удалить «${c.name}»?`)) return;
-    try { await carsApi.remove(c.id); await load(); onChange?.(); }
-    catch { alert('Нельзя удалить: по машине есть аренды. Поставьте статус «Скрыта».'); }
+  const hide = async (c) => {
+    if (!confirm(`Скрыть «${c.name}» в корзину? Машина исчезнет из списков, данные сохранятся.`)) return;
+    try { await carsApi.hide(c.id); await load(); onChange?.(); }
+    catch (e) { alert('Ошибка: ' + (e?.message || '')); }
   };
 
   return (
     <>
       <div className="head">
         <h1>Машины</h1>
-        <button className="btn" onClick={openNew}>+ Добавить машину</button>
+        {canWrite && <button className="btn" onClick={openNew}>+ Добавить машину</button>}
       </div>
 
       <div className="card">
@@ -84,8 +86,8 @@ export default function Cars({ onChange }) {
                   <td><span className={`badge ${c.status}`}>{STATUS.find((s) => s[0] === c.status)?.[1] || c.status}</span></td>
                   <td><div className="row-actions">
                     <button className="btn ghost sm" onClick={() => setHistory(c)}>История</button>
-                    <button className="btn ghost sm" onClick={() => openEdit(c)}>Изм.</button>
-                    <button className="btn danger sm" onClick={() => remove(c)}>Удалить</button>
+                    {canWrite && <button className="btn ghost sm" onClick={() => openEdit(c)}>Изм.</button>}
+                    {canWrite && <button className="btn ghost sm" onClick={() => hide(c)}>Скрыть</button>}
                   </div></td>
                 </tr>
               ))}

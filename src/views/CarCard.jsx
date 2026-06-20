@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { fmtMoney, fmtDate, CURRENCIES, toMinor, fromMinor } from '../App.jsx';
 import { carExpenses, officeExpenses, CAR_EXPENSE_CATS, OFFICE_EXPENSE_CATS } from '../lib/api.js';
+import { usePerms } from '../lib/perms.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -49,6 +50,7 @@ function renderSums(sums, color) {
 const EMPTY_EXPENSE = { date: today(), category: 'ТО', description: '', amount: '', currency: 'TRY', note: '' };
 
 export default function CarCard({ car, rentals: allRentals, onClose, onChange }) {
+  const { canWrite } = usePerms();
   const [tab, setTab] = useState('info');
   const [dateQuery, setDateQuery] = useState('');
   const [expenses, setExpenses] = useState([]);
@@ -227,7 +229,7 @@ export default function CarCard({ car, rentals: allRentals, onClose, onChange })
               <div style={{ fontSize: 13, color: 'var(--muted)' }}>
                 Итого расходов: {Object.keys(expenseSums).length === 0 ? '—' : renderSums(expenseSums, '#993C1D')}
               </div>
-              <button className="btn sm" onClick={() => setExpForm({ ...EMPTY_EXPENSE })}>+ Добавить расход</button>
+              {canWrite && <button className="btn sm" onClick={() => setExpForm({ ...EMPTY_EXPENSE })}>+ Добавить расход</button>}
             </div>
             <div style={{ maxHeight: '50vh', overflowY: 'auto' }}>
               {expenses.length === 0
@@ -248,8 +250,8 @@ export default function CarCard({ car, rentals: allRentals, onClose, onChange })
                           <td>{e.description}{e.note ? <span className="muted"> · {e.note}</span> : ''}</td>
                           <td className="mono">{fmtMoney(e.amount, e.currency)}</td>
                           <td><div className="row-actions">
-                            <button className="btn ghost sm" onClick={() => setExpForm({ ...e, amount: fromMinor(e.amount) })}>Изм.</button>
-                            <button className="btn danger sm" onClick={() => removeExpense(e)}>Удалить</button>
+                            {canWrite && <button className="btn ghost sm" onClick={() => setExpForm({ ...e, amount: fromMinor(e.amount) })}>Изм.</button>}
+                            {canWrite && <button className="btn ghost sm" onClick={() => removeExpense(e)}>Скрыть</button>}
                           </div></td>
                         </tr>
                       ))}

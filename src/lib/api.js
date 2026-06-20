@@ -6,6 +6,8 @@ import { supabase } from './supabase.js';
 import { toMinor, fromMinor } from './helpers.js';
 
 // ─── Утилиты ──────────────────────────────────────────────────────────────
+const nowIso = () => new Date().toISOString();
+
 function carName(c) {
   return `${c.brand || ''} ${c.model || ''}`.trim() || c.name || '(без названия)';
 }
@@ -39,8 +41,10 @@ export const auditLog = {
 
 
 export const cars = {
+  // машины прячутся через status='hidden' (штатный механизм), это и есть их «корзина»
   list: () => q(supabase.from('cars').select('*').neq('status', 'hidden').order('name')),
   listAll: () => q(supabase.from('cars').select('*').order('name')),
+  trash: () => q(supabase.from('cars').select('*').eq('status', 'hidden').order('name')),
   create: async (c) => {
     const name = carName(c);
     const { data, error } = await supabase.from('cars').insert({ ...c, name }).select().single();
@@ -54,17 +58,32 @@ export const cars = {
     if (error) throw new Error(error.message);
     await audit('update', 'cars', c.id, `Изменена машина: ${name}`);
   },
-  remove: async (id) => {
+  // «спрятать в корзину» — это не физическое удаление, а смена статуса (UPDATE)
+  hide: async (id) => {
+    const { data: c } = await supabase.from('cars').select('name').eq('id', id).single();
+    const { error } = await supabase.from('cars').update({ status: 'hidden' }).eq('id', id);
+    if (error) throw new Error(error.message);
+    await audit('update', 'cars', id, `Машина скрыта в корзину: ${c?.name || '#' + id}`);
+  },
+  restore: async (id) => {
+    const { data: c } = await supabase.from('cars').select('name').eq('id', id).single();
+    const { error } = await supabase.from('cars').update({ status: 'free' }).eq('id', id);
+    if (error) throw new Error(error.message);
+    await audit('update', 'cars', id, `Машина восстановлена из корзины: ${c?.name || '#' + id}`);
+  },
+  // физическое удаление — только admin (RLS пропустит только его)
+  purge: async (id) => {
     const { data: c } = await supabase.from('cars').select('name').eq('id', id).single();
     const { error } = await supabase.from('cars').delete().eq('id', id);
     if (error) throw new Error(error.message);
-    await audit('delete', 'cars', id, `Удалена машина: ${c?.name || '#' + id}`);
+    await audit('delete', 'cars', id, `Удалена машина НАВСЕГДА: ${c?.name || '#' + id}`);
   },
 };
 
 // ─── Клиенты ──────────────────────────────────────────────────────────────
 export const clients = {
-  list: () => q(supabase.from('clients').select('*').order('last_name').order('first_name')),
+  list: () => q(supabase.from('clients').select('*').is('deleted_at', null).order('last_name').order('first_name')),
+  trash: () => q(supabase.from('clients').select('*').not('deleted_at', 'is', null).order('last_name')),
   create: async (c) => {
     const name = clientName(c);
     const { data, error } = await supabase.from('clients').insert({ ...c, name }).select().single();
@@ -78,12 +97,24 @@ export const clients = {
     if (error) throw new Error(error.message);
     await audit('update', 'clients', c.id, `Изменён клиент: ${name}`);
   },
+  // soft-delete: ставим deleted_at. Триггер в БД не даст скрыть клиента с живой историей.
   remove: async (id) => {
-    // Сначала получаем имя для журнала
+    const { data: c } = await supabase.from('clients').select('name').eq('id', id).single();
+    const { error } = await supabase.from('clients').update({ deleted_at: nowIso() }).eq('id', id);
+    if (error) throw new Error(error.message);
+    await audit('delete', 'clients', id, `Клиент скрыт в корзину: ${c?.name || '#' + id}`);
+  },
+  restore: async (id) => {
+    const { data: c } = await supabase.from('clients').select('name').eq('id', id).single();
+    const { error } = await supabase.from('clients').update({ deleted_at: null }).eq('id', id);
+    if (error) throw new Error(error.message);
+    await audit('update', 'clients', id, `Клиент восстановлен из корзины: ${c?.name || '#' + id}`);
+  },
+  purge: async (id) => {
     const { data: c } = await supabase.from('clients').select('name').eq('id', id).single();
     const { error } = await supabase.from('clients').delete().eq('id', id);
     if (error) throw new Error(error.message);
-    await audit('delete', 'clients', id, `Удалён клиент: ${c?.name || '#' + id}`);
+    await audit('delete', 'clients', id, `Удалён клиент НАВСЕГДА: ${c?.name || '#' + id}`);
   },
 };
 
@@ -93,6 +124,7 @@ async function findConflict({ car_id, issued_at, due_at, returned_at, pickup_tim
     .from('rentals')
     .select('*, clients(name)')
     .eq('car_id', car_id)
+    .is('deleted_at', null)
     .neq('status', 'cancelled');
   if (excludeId) query = query.neq('id', excludeId);
   const { data: candidates } = await query;
@@ -112,20 +144,33 @@ async function findConflict({ car_id, issued_at, due_at, returned_at, pickup_tim
 }
 
 // ─── Аренды ───────────────────────────────────────────────────────────────
+function mapRental(r) {
+  return {
+    ...r,
+    car_name: r.cars?.name,
+    car_plate: r.cars?.plate,
+    client_name: r.clients?.name,
+    client_phone: r.clients?.phone,
+  };
+}
 export const rentals = {
   list: async () => {
     const { data, error } = await supabase
       .from('rentals')
       .select('*, cars(name, plate), clients(name, phone)')
+      .is('deleted_at', null)
       .order('issued_at', { ascending: false });
     if (error) throw new Error(error.message);
-    return data.map(r => ({
-      ...r,
-      car_name: r.cars?.name,
-      car_plate: r.cars?.plate,
-      client_name: r.clients?.name,
-      client_phone: r.clients?.phone,
-    }));
+    return data.map(mapRental);
+  },
+  trash: async () => {
+    const { data, error } = await supabase
+      .from('rentals')
+      .select('*, cars(name, plate), clients(name, phone)')
+      .not('deleted_at', 'is', null)
+      .order('issued_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    return data.map(mapRental);
   },
   create: async (r) => {
     const conflict = await findConflict(r);
@@ -145,19 +190,35 @@ export const rentals = {
     const action = rest.status === 'completed' ? `Возврат: ${carClient}` : rest.status === 'active' ? `Выдача: ${carClient}` : rest.status === 'cancelled' ? `Отмена брони: ${carClient}` : `Изменена аренда: ${carClient}`;
     await audit('update', 'rentals', id, action);
   },
+  // soft-delete
   remove: async (id) => {
-    const { data: r } = await supabase.from('rentals').select('car_id, client_id, cars(name), clients(name)').eq('id', id).single();
+    const { data: r } = await supabase.from('rentals').select('cars(name), clients(name)').eq('id', id).single();
+    const { error } = await supabase.from('rentals').update({ deleted_at: nowIso() }).eq('id', id);
+    if (error) throw new Error(error.message);
+    await audit('delete', 'rentals', id, `Аренда скрыта в корзину: ${r?.cars?.name || ''} — ${r?.clients?.name || ''}`);
+  },
+  restore: async (id) => {
+    const { error } = await supabase.from('rentals').update({ deleted_at: null }).eq('id', id);
+    if (error) throw new Error(error.message);
+    await audit('update', 'rentals', id, `Аренда восстановлена из корзины #${id}`);
+  },
+  purge: async (id) => {
     const { error } = await supabase.from('rentals').delete().eq('id', id);
     if (error) throw new Error(error.message);
-    await audit('delete', 'rentals', id, `Удалена аренда: ${r?.cars?.name || ''} — ${r?.clients?.name || ''}`);
+    await audit('delete', 'rentals', id, `Удалена аренда НАВСЕГДА #${id}`);
   },
 };
 
 // ─── Расходы машин ────────────────────────────────────────────────────────
 export const carExpenses = {
-  listByCar: (car_id) => q(supabase.from('car_expenses').select('*').eq('car_id', car_id).order('date', { ascending: false })),
+  listByCar: (car_id) => q(supabase.from('car_expenses').select('*').eq('car_id', car_id).is('deleted_at', null).order('date', { ascending: false })),
   listAll: async () => {
-    const { data, error } = await supabase.from('car_expenses').select('*, cars(name)').order('date', { ascending: false });
+    const { data, error } = await supabase.from('car_expenses').select('*, cars(name)').is('deleted_at', null).order('date', { ascending: false });
+    if (error) throw new Error(error.message);
+    return data.map(e => ({ ...e, car_name: e.cars?.name }));
+  },
+  trash: async () => {
+    const { data, error } = await supabase.from('car_expenses').select('*, cars(name)').not('deleted_at', 'is', null).order('date', { ascending: false });
     if (error) throw new Error(error.message);
     return data.map(e => ({ ...e, car_name: e.cars?.name }));
   },
@@ -172,14 +233,23 @@ export const carExpenses = {
   },
   remove: async (id) => {
     const { data: e } = await supabase.from('car_expenses').select('description').eq('id', id).single();
+    await q(supabase.from('car_expenses').update({ deleted_at: nowIso() }).eq('id', id));
+    await audit('delete', 'car_expenses', id, `Расход машины скрыт в корзину: ${e?.description || '#' + id}`);
+  },
+  restore: async (id) => {
+    await q(supabase.from('car_expenses').update({ deleted_at: null }).eq('id', id));
+    await audit('update', 'car_expenses', id, `Расход машины восстановлен #${id}`);
+  },
+  purge: async (id) => {
     await q(supabase.from('car_expenses').delete().eq('id', id));
-    await audit('delete', 'car_expenses', id, `Удалён расход машины: ${e?.description || '#' + id}`);
+    await audit('delete', 'car_expenses', id, `Удалён расход машины НАВСЕГДА #${id}`);
   },
 };
 
 // ─── Расходы офиса ────────────────────────────────────────────────────────
 export const officeExpenses = {
-  list: () => q(supabase.from('office_expenses').select('*').order('date', { ascending: false })),
+  list: () => q(supabase.from('office_expenses').select('*').is('deleted_at', null).order('date', { ascending: false })),
+  trash: () => q(supabase.from('office_expenses').select('*').not('deleted_at', 'is', null).order('date', { ascending: false })),
   create: async (e) => {
     const data = await q(supabase.from('office_expenses').insert(e).select().single());
     await audit('create', 'office_expenses', data.id, `Расход офиса: ${e.description} · ${(e.amount/100).toFixed(2)} ${e.currency}`);
@@ -191,8 +261,16 @@ export const officeExpenses = {
   },
   remove: async (id) => {
     const { data: e } = await supabase.from('office_expenses').select('description').eq('id', id).single();
+    await q(supabase.from('office_expenses').update({ deleted_at: nowIso() }).eq('id', id));
+    await audit('delete', 'office_expenses', id, `Расход офиса скрыт в корзину: ${e?.description || '#' + id}`);
+  },
+  restore: async (id) => {
+    await q(supabase.from('office_expenses').update({ deleted_at: null }).eq('id', id));
+    await audit('update', 'office_expenses', id, `Расход офиса восстановлен #${id}`);
+  },
+  purge: async (id) => {
     await q(supabase.from('office_expenses').delete().eq('id', id));
-    await audit('delete', 'office_expenses', id, `Удалён расход офиса: ${e?.description || '#' + id}`);
+    await audit('delete', 'office_expenses', id, `Удалён расход офиса НАВСЕГДА #${id}`);
   },
 };
 
@@ -224,8 +302,8 @@ export const maintenance = {
 export async function getStats() {
   const [{ count: total }, { count: out }, { count: reserved }, { count: maint }] = await Promise.all([
     supabase.from('cars').select('*', { count: 'exact', head: true }).neq('status', 'hidden'),
-    supabase.from('rentals').select('car_id', { count: 'exact', head: true }).eq('status', 'active'),
-    supabase.from('rentals').select('car_id', { count: 'exact', head: true }).eq('status', 'reserved'),
+    supabase.from('rentals').select('car_id', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'active'),
+    supabase.from('rentals').select('car_id', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'reserved'),
     supabase.from('cars').select('*', { count: 'exact', head: true }).eq('status', 'maintenance'),
   ]);
   return { total: total || 0, out: out || 0, reserved: reserved || 0, maintenance: maint || 0, free: Math.max(0, (total || 0) - (out || 0) - (maint || 0)) };
@@ -286,3 +364,37 @@ export async function getNotifications() {
 
 export const CAR_EXPENSE_CATS = ['ТО', 'Ремонт', 'Страхование', 'Шины', 'Мойка', 'Прочее'];
 export const OFFICE_EXPENSE_CATS = ['Аренда', 'Коммунальные услуги', 'Реклама', 'Зарплата', 'Связь', 'Прочее'];
+
+// текущая роль пользователя (admin|staff|viewer)
+export async function getMyRole() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return 'viewer';
+  const { data, error } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+  if (error || !data) return 'viewer';
+  return data.role || 'viewer';
+}
+
+// профиль: роль + флаг обязательной смены пароля
+export async function getMyProfile() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { role: 'viewer', mustChange: false };
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('role, must_change_password')
+    .eq('id', user.id)
+    .single();
+  if (error || !data) return { role: 'viewer', mustChange: false };
+  return { role: data.role || 'viewer', mustChange: !!data.must_change_password };
+}
+
+// сменить собственный пароль (пользователь уже залогинен временным)
+export async function changeMyPassword(newPassword) {
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw new Error(error.message);
+}
+
+// снять флаг must_change_password у себя (через защищённую функцию, без права менять роль)
+export async function clearMustChangePassword() {
+  const { error } = await supabase.rpc('clear_must_change_password');
+  if (error) throw new Error(error.message);
+}

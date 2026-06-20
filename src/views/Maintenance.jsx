@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { maintenance as maintenanceApi } from '../lib/api.js';
 import { fmtDate } from '../App.jsx';
+import { usePerms } from '../lib/perms.js';
 
 // Дней между двумя датами (date2 - date1)
 function daysDiff(dateStr) {
@@ -71,6 +72,7 @@ const EMPTY_RECORD = {
 };
 
 export default function Maintenance({ cars }) {
+  const { canWrite, canPurge } = usePerms();
   const [records, setRecords] = useState([]);
   const [form, setForm] = useState(null);
   const [filter, setFilter] = useState('all'); // all | overdue | critical | soon
@@ -143,7 +145,7 @@ export default function Maintenance({ cars }) {
     <>
       <div className="head">
         <h1>Техсостояние</h1>
-        <button className="btn" onClick={() => setForm({ ...EMPTY_RECORD })}>+ Добавить запись</button>
+        {canWrite && <button className="btn" onClick={() => setForm({ ...EMPTY_RECORD })}>+ Добавить запись</button>}
       </div>
 
       {/* Счётчики-фильтры */}
@@ -266,8 +268,8 @@ export default function Maintenance({ cars }) {
                   <td><StatusBadge status={r.worstStatus} /></td>
                   <td>
                     <div className="row-actions">
-                      <button className="btn ghost sm" onClick={() => openEdit(r)}>Изм.</button>
-                      <button className="btn danger sm" onClick={() => remove(r)}>Удалить</button>
+                      {canWrite && <button className="btn ghost sm" onClick={() => openEdit(r)}>Изм.</button>}
+                      {canPurge && <button className="btn danger sm" onClick={() => remove(r)}>Удалить</button>}
                     </div>
                   </td>
                 </tr>

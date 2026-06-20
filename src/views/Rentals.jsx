@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { cars as carsApi, clients as clientsApi, rentals as rentalsApi } from '../lib/api.js';
 import { fromMinor, fmtMoney, fmtDate } from '../App.jsx';
+import { usePerms } from '../lib/perms.js';
 import BookingForm from './BookingForm.jsx';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -8,6 +9,7 @@ const newRecord = (status) => ({ car_id: '', client_id: '', issued_at: today(), 
 
 // mode: 'reserved' (вкладка Брони) | 'active' (вкладка Аренда)
 export default function Rentals({ mode, onChange }) {
+  const { canWrite } = usePerms();
   const isBooking = mode === 'reserved';
   const [list, setList] = useState([]);
   const [cars, setCars] = useState([]);
@@ -79,7 +81,7 @@ export default function Rentals({ mode, onChange }) {
     await rentalsApi.update({ ...r, status: 'cancelled' }); await load(); onChange?.();
   };
   const remove = async (r) => {
-    if (!confirm('Удалить запись полностью?')) return;
+    if (!confirm('Скрыть запись в корзину? Данные сохранятся, можно восстановить.')) return;
     await rentalsApi.remove(r.id); await load(); onChange?.();
   };
 
@@ -131,7 +133,7 @@ export default function Rentals({ mode, onChange }) {
               {showHistory ? '← Назад к аренде' : 'История'}
             </button>
           )}
-          {!showHistory && <button className="btn" onClick={openNew}>+ {isBooking ? 'Новая бронь' : 'Новая аренда'}</button>}
+          {!showHistory && canWrite && <button className="btn" onClick={openNew}>+ {isBooking ? 'Новая бронь' : 'Новая аренда'}</button>}
         </div>
       </div>
 
@@ -190,12 +192,12 @@ export default function Rentals({ mode, onChange }) {
                   <td className="mono" style={{ color: debt(r) > 0 ? 'var(--warn)' : 'var(--ink-soft)' }}>{debt(r) > 0 ? fmtMoney(debt(r), r.currency) : '—'}</td>
                   <td>{statusBadge(r)}</td>
                   <td><div className="row-actions">
-                    {r.status === 'reserved' && <button className="btn sm" onClick={() => issue(r)}>Выдать</button>}
-                    {r.status === 'active' && <button className="btn ghost sm" onClick={() => giveBack(r)}>Возврат</button>}
-                    {(r.status === 'reserved' || r.status === 'active') && <button className="btn ghost sm" onClick={() => openEdit(r)}>Изм.</button>}
-                    {r.status === 'reserved' && <button className="btn danger sm" onClick={() => cancel(r)}>Отменить</button>}
-                    {r.status === 'completed' || r.status === 'cancelled' ? <button className="btn ghost sm" onClick={() => openEdit(r)}>Изм.</button> : null}
-                    <button className="btn danger sm" onClick={() => remove(r)}>Удалить</button>
+                    {canWrite && r.status === 'reserved' && <button className="btn sm" onClick={() => issue(r)}>Выдать</button>}
+                    {canWrite && r.status === 'active' && <button className="btn ghost sm" onClick={() => giveBack(r)}>Возврат</button>}
+                    {canWrite && (r.status === 'reserved' || r.status === 'active') && <button className="btn ghost sm" onClick={() => openEdit(r)}>Изм.</button>}
+                    {canWrite && r.status === 'reserved' && <button className="btn danger sm" onClick={() => cancel(r)}>Отменить</button>}
+                    {canWrite && (r.status === 'completed' || r.status === 'cancelled') ? <button className="btn ghost sm" onClick={() => openEdit(r)}>Изм.</button> : null}
+                    {canWrite && <button className="btn ghost sm" onClick={() => remove(r)}>Скрыть</button>}
                   </div></td>
                 </tr>
               ))}

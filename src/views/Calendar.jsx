@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { usePerms } from '../lib/perms.js';
 import { cars as carsApi, clients as clientsApi, rentals as rentalsApi } from '../lib/api.js';
 import { fromMinor } from '../App.jsx';
 import BookingForm from './BookingForm.jsx';
@@ -13,6 +14,7 @@ const addDays = (iso, n) => new Date(utc(iso) + n * 86400000).toISOString().slic
 const diff = (a, b) => Math.round((utc(b) - utc(a)) / 86400000);
 
 export default function Calendar({ onChange }) {
+  const { canWrite } = usePerms();
   const [start, setStart] = useState(addDays(todayIso(), -2));
   const [cars, setCars] = useState([]);
   const [clients, setClients] = useState([]);
@@ -53,14 +55,18 @@ export default function Calendar({ onChange }) {
   };
 
   const openNew = (carId, iso) => {
+    if (!canWrite) return;
     if (clients.length === 0) return alert('Сначала добавьте хотя бы одного клиента.');
     setForm({ car_id: carId, client_id: '', issued_at: iso, due_at: '', returned_at: '', amount: '', currency: 'EUR', paid: '', deposit: '', pickup_location: '', return_location: '', pickup_time: '', return_time: '', status: 'reserved', note: '' });
   };
-  const openEdit = (r) => setForm({
+  const openEdit = (r) => {
+    if (!canWrite) return;
+    setForm({
     ...r, due_at: r.due_at || '', returned_at: r.returned_at || '',
     pickup_location: r.pickup_location || '', return_location: r.return_location || '',
     amount: fromMinor(r.amount), paid: r.paid ? fromMinor(r.paid) : '', deposit: r.deposit ? fromMinor(r.deposit) : '',
-  });
+    });
+  };
   const onSaved = async () => { setForm(null); await load(); onChange?.(); };
 
   return (

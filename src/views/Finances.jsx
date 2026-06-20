@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { cars as carsApi, rentals as rentalsApi, carExpenses, officeExpenses, CAR_EXPENSE_CATS, OFFICE_EXPENSE_CATS } from '../lib/api.js';
 import { CURRENCIES, toMinor, fromMinor, fmtMoney, fmtDate } from '../App.jsx';
+import { usePerms } from '../lib/perms.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const thisMonth = () => new Date().toISOString().slice(0, 7); // YYYY-MM
@@ -60,6 +61,7 @@ const EMPTY_CAR_EXP = { date: today(), category: 'ТО', description: '', amount
 const EMPTY_OFF_EXP = { date: today(), category: 'Аренда', description: '', amount: '', currency: 'TRY', note: '' };
 
 export default function Finances() {
+  const { canWrite } = usePerms();
   const periods = getPeriods();
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [reportFrom, setReportFrom] = useState(periods[0].from);
@@ -235,7 +237,7 @@ export default function Finances() {
           <div className="card">
             <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <b style={{ fontSize: 13 }}>Расходы машин</b>
-              <button className="btn sm" onClick={() => setCarForm({ ...EMPTY_CAR_EXP })}>+ Добавить</button>
+              {canWrite && <button className="btn sm" onClick={() => setCarForm({ ...EMPTY_CAR_EXP })}>+ Добавить</button>}
             </div>
             {displayCarExp.length === 0 ? <div className="empty" style={{ padding: '20px' }}><b>Расходов нет за этот период</b></div> : (
               <div style={{ maxHeight: 260, overflowY: 'auto' }}>
@@ -251,8 +253,8 @@ export default function Finances() {
                       </span></td>
                       <td className="mono" style={{ color: '#993C1D', fontWeight: 500 }}>{fmtMoney(e.amount, e.currency)}</td>
                       <td><div className="row-actions">
-                        <button className="btn ghost sm" onClick={() => setCarForm({ ...e, amount: fromMinor(e.amount) })}>Изм.</button>
-                        <button className="btn danger sm" onClick={() => removeCarExp(e)}>Удалить</button>
+                        {canWrite && <button className="btn ghost sm" onClick={() => setCarForm({ ...e, amount: fromMinor(e.amount) })}>Изм.</button>}
+                        {canWrite && <button className="btn ghost sm" onClick={() => removeCarExp(e)}>Скрыть</button>}
                       </div></td>
                     </tr>
                   ))}</tbody>
@@ -265,7 +267,7 @@ export default function Finances() {
           <div className="card">
             <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <b style={{ fontSize: 13 }}>Расходы офиса</b>
-              <button className="btn sm" onClick={() => setOffForm({ ...EMPTY_OFF_EXP })}>+ Добавить</button>
+              {canWrite && <button className="btn sm" onClick={() => setOffForm({ ...EMPTY_OFF_EXP })}>+ Добавить</button>}
             </div>
             {filteredOffExp.length === 0 ? <div className="empty" style={{ padding: '20px' }}><b>Расходов нет за этот период</b></div> : (
               <div style={{ maxHeight: 260, overflowY: 'auto' }}>
@@ -281,8 +283,8 @@ export default function Finances() {
                       <td>{e.description}</td>
                       <td className="mono" style={{ color: '#993C1D', fontWeight: 500 }}>{fmtMoney(e.amount, e.currency)}</td>
                       <td><div className="row-actions">
-                        <button className="btn ghost sm" onClick={() => setOffForm({ ...e, amount: fromMinor(e.amount) })}>Изм.</button>
-                        <button className="btn danger sm" onClick={() => removeOffExp(e)}>Удалить</button>
+                        {canWrite && <button className="btn ghost sm" onClick={() => setOffForm({ ...e, amount: fromMinor(e.amount) })}>Изм.</button>}
+                        {canWrite && <button className="btn ghost sm" onClick={() => removeOffExp(e)}>Скрыть</button>}
                       </div></td>
                     </tr>
                   ))}</tbody>

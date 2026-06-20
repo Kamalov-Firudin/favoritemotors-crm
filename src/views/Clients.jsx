@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { fmtMoney, fmtDate } from '../App.jsx';
+import { usePerms } from '../lib/perms.js';
 import { cars as carsApi, clients as clientsApi, rentals as rentalsApi, carExpenses, officeExpenses, maintenance as maintenanceApi, CAR_EXPENSE_CATS, OFFICE_EXPENSE_CATS } from '../lib/api.js';
 
 const CATEGORIES = ['Обычный', 'Постоянный', 'Лояльный', 'Чёрный список'];
@@ -12,6 +13,7 @@ const EMPTY = {
 };
 
 export default function Clients() {
+  const { canWrite } = usePerms();
   const [rows, setRows] = useState([]);
   const [rentals, setRentals] = useState([]);
   const [form, setForm] = useState(null);
@@ -60,9 +62,9 @@ export default function Clients() {
   };
 
   const remove = async (c) => {
-    if (!confirm(`Удалить клиента «${c.name}»?`)) return;
+    if (!confirm(`Скрыть клиента «${c.name}» в корзину? Данные сохранятся, можно восстановить.`)) return;
     try { await clientsApi.remove(c.id); await load(); }
-    catch { alert('Нельзя удалить: по клиенту есть брони.'); }
+    catch (e) { alert(e?.message || 'Нельзя скрыть: по клиенту есть аренды в истории.'); }
   };
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
@@ -79,7 +81,7 @@ export default function Clients() {
     <>
       <div className="head">
         <h1>Клиенты</h1>
-        <button className="btn" onClick={openNew}>+ Добавить клиента</button>
+        {canWrite && <button className="btn" onClick={openNew}>+ Добавить клиента</button>}
       </div>
 
       <div className="toolbar">
@@ -108,8 +110,8 @@ export default function Clients() {
                     <td className="mono muted">{fmtDate(c.birth_date)}</td>
                     <td className="muted">{c.source || '—'}</td>
                     <td><div className="row-actions">
-                      <button className="btn ghost sm" onClick={() => openEdit(c)}>Изм.</button>
-                      <button className="btn danger sm" onClick={() => remove(c)}>Удалить</button>
+                      {canWrite && <button className="btn ghost sm" onClick={() => openEdit(c)}>Изм.</button>}
+                      {canWrite && <button className="btn ghost sm" onClick={() => remove(c)}>Скрыть</button>}
                     </div></td>
                   </tr>
                 );
