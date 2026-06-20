@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { fmtMoney, fmtDate } from '../App.jsx';
+import { fmtMoney, fmtDate, clientBalance } from '../App.jsx';
 import { usePerms } from '../lib/perms.js';
 import { cars as carsApi, clients as clientsApi, rentals as rentalsApi, carExpenses, officeExpenses, maintenance as maintenanceApi, CAR_EXPENSE_CATS, OFFICE_EXPENSE_CATS } from '../lib/api.js';
 
@@ -26,17 +26,21 @@ export default function Clients() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  // баланс клиента по валютам: сумма (amount - paid) по неоплаченным
-  const balanceOf = (clientId) => {
-    const byCur = {};
-    for (const r of rentals) if (r.client_id === clientId) {
-      const d = Number(r.amount) - Number(r.paid);
-      if (d > 0) byCur[r.currency] = (byCur[r.currency] || 0) + d;
-    }
-    return byCur;
+  // баланс клиента по валютам: + клиент должен, − переплата (в пользу клиента)
+  const balanceOf = (clientId) => clientBalance(rentals, clientId);
+  const isDebtor = (byCur) => Object.values(byCur).some((v) => v > 0);
+  const hasCredit = (byCur) => Object.values(byCur).some((v) => v < 0);
+  const balanceCell = (byCur) => {
+    const debt = Object.entries(byCur).filter(([, v]) => v > 0);
+    const credit = Object.entries(byCur).filter(([, v]) => v < 0);
+    if (!debt.length && !credit.length) return <span style={{ color: 'var(--ink-soft)' }}>0</span>;
+    return (
+      <>
+        {debt.length > 0 && <div style={{ color: 'var(--warn)', fontWeight: 600 }}>{debt.map(([c, v]) => fmtMoney(v, c)).join(' · ')}</div>}
+        {credit.length > 0 && <div style={{ color: '#3B6D11', fontWeight: 500 }} title="в пользу клиента (можно зачесть)">+{credit.map(([c, v]) => fmtMoney(-v, c)).join(' · ')}</div>}
+      </>
+    );
   };
-  const balanceStr = (byCur) => Object.entries(byCur).map(([cur, v]) => fmtMoney(v, cur)).join(' · ');
-  const isDebtor = (byCur) => Object.keys(byCur).length > 0;
 
   const openNew = () => setForm({ ...EMPTY });
   const openEdit = (c) => setForm({ ...EMPTY, ...c, discount: c.discount || '' });
@@ -106,7 +110,7 @@ export default function Clients() {
                     <td className="muted">{c.middle_name || '—'}</td>
                     <td className="mono">{c.phone || '—'}</td>
                     <td className="muted">{c.email || '—'}</td>
-                    <td className="mono" style={{ color: debtor ? 'var(--warn)' : 'var(--ink-soft)', fontWeight: debtor ? 600 : 400 }}>{debtor ? balanceStr(bal) : '0'}</td>
+                    <td className="mono">{balanceCell(bal)}</td>
                     <td className="mono muted">{fmtDate(c.birth_date)}</td>
                     <td className="muted">{c.source || '—'}</td>
                     <td><div className="row-actions">

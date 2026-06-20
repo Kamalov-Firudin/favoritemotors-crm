@@ -26,6 +26,21 @@ export const rentalDays = (start, end) => {
   if (!Number.isFinite(ms)) return 0;
   return Math.max(1, Math.ceil(ms / 86400000));
 };
+// Баланс клиента по валютам: Σ(amount − paid) по его арендам (кроме отменённых).
+// + = клиент должен компании ; − = компания должна клиенту (переплата, к зачёту).
+// excludeId — исключить конкретную аренду (например, редактируемую сейчас).
+export const clientBalance = (rentals, clientId, excludeId) => {
+  const byCur = {};
+  for (const r of rentals || []) {
+    if (r.client_id !== clientId) continue;
+    if (r.status === 'cancelled') continue;
+    if (excludeId && r.id === excludeId) continue;
+    const d = Number(r.amount || 0) - Number(r.paid || 0);
+    byCur[r.currency] = (byCur[r.currency] || 0) + d;
+  }
+  for (const k of Object.keys(byCur)) if (byCur[k] === 0) delete byCur[k];
+  return byCur;
+};
 
 const TYPE_STYLE = {
   overdue: { dot: '#b4472b', bg: '#fdf0ed', text: '#7a2710' },

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { cars as carsApi, clients as clientsApi, rentals as rentalsApi } from '../lib/api.js';
-import { CURRENCIES, rentalDays } from '../App.jsx';
+import { CURRENCIES, rentalDays, clientBalance, fmtMoney } from '../App.jsx';
 import ClientPicker from './ClientPicker.jsx';
 
 const toMinor = (s) => { const n = parseFloat(String(s ?? '').replace(',', '.')); return Number.isFinite(n) ? Math.round(n * 100) : 0; };
@@ -15,7 +15,7 @@ function conflictMessage(e) {
   return `Эта машина уже выдана на пересекающиеся даты: ${name}, с ${f(start)}${end ? ` по ${f(end)}` : ''}.\nВыберите другие даты или другую машину.`;
 }
 
-export default function BookingForm({ initial, cars, clients, onClose, onSaved }) {
+export default function BookingForm({ initial, cars, clients, rentals, onClose, onSaved }) {
   const [form, setForm] = useState(initial);
   // была ли сумма отредактирована вручную — тогда авто-итог её не перезатирает
   const amountTouched = useRef(!!(initial.id && initial.amount && !initial.daily_price));
@@ -88,6 +88,19 @@ export default function BookingForm({ initial, cars, clients, onClose, onSaved }
             </select>
           </div>
           <ClientPicker clients={clients} value={form.client_id} onChange={(id) => setForm({ ...form, client_id: id })} />
+          {(() => {
+            if (!form.client_id) return null;
+            const bal = clientBalance(rentals, Number(form.client_id), form.id);
+            const debt = Object.entries(bal).filter(([, v]) => v > 0);
+            const credit = Object.entries(bal).filter(([, v]) => v < 0);
+            if (!debt.length && !credit.length) return null;
+            return (
+              <div className="field full">
+                {credit.length > 0 && <div className="hint" style={{ background: '#eef5ef', borderColor: '#b6d3bd', color: '#3B6D11' }}>↩ В пользу клиента с прошлых аренд: <b>{credit.map(([c, v]) => fmtMoney(-v, c)).join(' · ')}</b> — можно зачесть в оплату (впишите в «Оплачено»).</div>}
+                {debt.length > 0 && <div className="hint warn">⚠ За клиентом долг с прошлых аренд: <b>{debt.map(([c, v]) => fmtMoney(v, c)).join(' · ')}</b></div>}
+              </div>
+            );
+          })()}
           {selClient && selClient.category === 'Чёрный список' && <div className="field full"><div className="hint warn">⚠ Клиент в чёрном списке</div></div>}
           {selClient && selClient.category !== 'Чёрный список' && selClient.discount ? <div className="field full"><div className="hint">Скидка клиента: {selClient.discount}% (учтите в цене за день или итоге)</div></div> : null}
 

@@ -133,7 +133,7 @@ export default function Calendar({ onChange }) {
         <span className="muted">пустая клетка → создать бронь, полоса → открыть</span>
       </div>
 
-      {form && <BookingForm initial={form} cars={cars} clients={clients} onClose={() => setForm(null)} onSaved={onSaved} />}
+      {form && <BookingForm initial={form} cars={cars} clients={clients} rentals={rentals} onClose={() => setForm(null)} onSaved={onSaved} />}
     </>
   );
 }

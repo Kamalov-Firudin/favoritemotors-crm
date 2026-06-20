@@ -53,14 +53,24 @@ export default function Rentals({ mode, onChange }) {
   };
 
   // ── Возврат ──
-  const openReturn = (r) => setReturnForm({
-    id: r.id, car_name: r.car_name, client_name: r.client_name,
-    due_at: r.due_at || '', returned_at: today(), return_time: r.return_time || '',
-    amount: fromMinor(r.amount), paid: r.paid ? fromMinor(r.paid) : fromMinor(r.amount),
-    currency: r.currency, note: r.note || '',
-    km_out: r.km_out ?? '', km_in: r.km_in ?? '',
-    _raw: r,
-  });
+  // Сумма пересчитывается по фактическому сроку: дни × цена/день + доплата.
+  // Если цена за день не задана (старые аренды) — оставляем сумму как есть.
+  const recalcAmount = (r, dateStr) => {
+    if (!r.daily_price) return fromMinor(r.amount);
+    const days = rentalDays(r.issued_at, dateStr || today());
+    return ((r.daily_price * days + (r.extra_fee || 0)) / 100).toFixed(2);
+  };
+  const openReturn = (r) => {
+    const recomputed = recalcAmount(r, today());
+    setReturnForm({
+      id: r.id, car_name: r.car_name, client_name: r.client_name,
+      due_at: r.due_at || '', returned_at: today(), return_time: r.return_time || '',
+      amount: recomputed, paid: r.paid ? fromMinor(r.paid) : recomputed,
+      currency: r.currency, note: r.note || '',
+      km_out: r.km_out ?? '', km_in: r.km_in ?? '',
+      _raw: r,
+    });
+  };
   const confirmReturn = async () => {
     const r = returnForm._raw;
     const kmIn = returnForm.km_in !== '' ? parseInt(String(returnForm.km_in).replace(/\s/g, ''), 10) : null;
@@ -216,7 +226,12 @@ export default function Rentals({ mode, onChange }) {
                     return '—';
                   })()}</td>
                   <td className="mono">{fmtMoney(r.amount, r.currency)}</td>
-                  <td className="mono" style={{ color: debt(r) > 0 ? 'var(--warn)' : 'var(--ink-soft)' }}>{debt(r) > 0 ? fmtMoney(debt(r), r.currency) : '—'}</td>
+                  <td className="mono">{(() => {
+                    const d = debt(r);
+                    if (d > 0) return <span style={{ color: 'var(--warn)' }}>{fmtMoney(d, r.currency)}</span>;
+                    if (d < 0) return <span style={{ color: '#3B6D11' }} title="переплата, к возврату клиенту">+{fmtMoney(-d, r.currency)}</span>;
+                    return <span style={{ color: 'var(--ink-soft)' }}>—</span>;
+                  })()}</td>
                   <td>{statusBadge(r)}</td>
                   <td><div className="row-actions">
                     {canWrite && r.status === 'reserved' && <button className="btn sm" onClick={() => issue(r)}>Выдать</button>}
@@ -234,7 +249,7 @@ export default function Rentals({ mode, onChange }) {
         )}
       </div>
 
-      {form && <BookingForm initial={form} cars={cars} clients={clients} onClose={() => setForm(null)} onSaved={onSaved} />}
+      {form && <BookingForm initial={form} cars={cars} clients={clients} rentals={list} onClose={() => setForm(null)} onSaved={onSaved} />}
 
       {/* Выдача с пробегом */}
       {issueForm && (
@@ -303,9 +318,23 @@ export default function Rentals({ mode, onChange }) {
               </div>
 
               <div className="field"><label>Фактическая дата возврата</label>
-                <input type="date" value={returnForm.returned_at} onChange={(e) => setReturnForm({ ...returnForm, returned_at: e.target.value })} /></div>
+                <input type="date" value={returnForm.returned_at} onChange={(e) => {
+                  const date = e.target.value;
+                  const r = returnForm._raw;
+                  setReturnForm({ ...returnForm, returned_at: date, amount: recalcAmount(r, date) });
+                }} /></div>
               <div className="field"><label>Время возврата</label>
                 <input type="time" value={returnForm.return_time} onChange={(e) => setReturnForm({ ...returnForm, return_time: e.target.value })} /></div>
+
+              {returnForm._raw.daily_price ? (
+                <div className="field full" style={{ gridColumn: '1 / -1' }}>
+                  <div className="hint">
+                    По факту: <b>{rentalDays(returnForm._raw.issued_at, returnForm.returned_at)} дн</b> × {fromMinor(returnForm._raw.daily_price)} {returnForm.currency}{returnForm._raw.extra_fee ? ` + доп ${fromMinor(returnForm._raw.extra_fee)}` : ''} = <b>{recalcAmount(returnForm._raw, returnForm.returned_at)} {returnForm.currency}</b>
+                    {returnForm.due_at && returnForm.returned_at < returnForm.due_at && <span style={{ color: 'var(--ok)', marginLeft: 6 }}>· вернул раньше, пересчитано</span>}
+                    {returnForm.due_at && returnForm.returned_at > returnForm.due_at && <span style={{ color: 'var(--warn)', marginLeft: 6 }}>· дольше срока, пересчитано</span>}
+                  </div>
+                </div>
+              ) : null}
 
               {/* Пробег */}
               <div className="field"><label>Пробег при выдаче (км)</label>
@@ -339,8 +368,9 @@ export default function Rentals({ mode, onChange }) {
 
               {(() => {
                 const d = Math.round((parseFloat(returnForm.amount) || 0) * 100) - Math.round((parseFloat(returnForm.paid) || 0) * 100);
-                if (d <= 0) return null;
-                return <div style={{ gridColumn: '1 / -1', background: '#fdf0ed', border: '1px solid #e8b4a6', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--warn)' }}>⚠ Остаток долга: <b>{fmtMoney(d, returnForm.currency)}</b></div>;
+                if (d > 0) return <div style={{ gridColumn: '1 / -1', background: '#fdf0ed', border: '1px solid #e8b4a6', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--warn)' }}>⚠ Клиент должен доплатить: <b>{fmtMoney(d, returnForm.currency)}</b></div>;
+                if (d < 0) return <div style={{ gridColumn: '1 / -1', background: '#eef5ef', border: '1px solid #b6d3bd', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#3B6D11' }}>↩ Переплата, к возврату клиенту: <b>{fmtMoney(-d, returnForm.currency)}</b></div>;
+                return null;
               })()}
             </div>
             <div className="modal-foot"><button className="btn ghost" onClick={() => setReturnForm(null)}>Отмена</button><button className="btn" onClick={confirmReturn}>Завершить аренду</button></div>
