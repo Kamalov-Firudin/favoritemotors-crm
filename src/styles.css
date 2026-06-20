@@ -146,6 +146,7 @@ tr:hover td { background: #fbf9f4; }
 .cal-cell.click:hover { background: #fbf9f4; }
 .cal-cell.we { background: var(--paper); }
 .cal-cell.today { background: #eef4f0; }
+.cal-cell.picked { background: #fbe8cf; box-shadow: inset 0 0 0 1px #e0b25e; }
 .cal-hd .cal-cell { height: auto; padding: 5px 0; text-align: center; }
 .cal-hd .cal-car { display: flex; align-items: flex-end; font-size: 11px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .05em; }
 .cal-wd { font-size: 10px; color: var(--ink-soft); }

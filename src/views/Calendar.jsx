@@ -6,7 +6,7 @@ import BookingForm from './BookingForm.jsx';
 
 const CW = 40;                       // ширина колонки дня
 const DAYS = 30;                     // окно в днях (месяц виден целиком)
-const STEP = 14;                     // шаг прокрутки стрелкой (2 недели)
+const STEP = 7;                      // шаг прокрутки стрелкой (1 неделя)
 const WD = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
 const MON = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -17,6 +17,7 @@ const diff = (a, b) => Math.round((utc(b) - utc(a)) / 86400000);
 export default function Calendar({ onChange }) {
   const { canWrite } = usePerms();
   const [start, setStart] = useState(addDays(todayIso(), -2));
+  const [jumpDate, setJumpDate] = useState('');
   const [cars, setCars] = useState([]);
   const [clients, setClients] = useState([]);
   const [rentals, setRentals] = useState([]);
@@ -34,7 +35,7 @@ export default function Calendar({ onChange }) {
   const days = Array.from({ length: DAYS }, (_, i) => {
     const iso = addDays(start, i);
     const d = new Date(utc(iso));
-    return { iso, num: d.getUTCDate(), wd: WD[d.getUTCDay()], weekend: [0, 6].includes(d.getUTCDay()), today: iso === today };
+    return { iso, num: d.getUTCDate(), wd: WD[d.getUTCDay()], weekend: [0, 6].includes(d.getUTCDay()), today: iso === today, picked: iso === jumpDate };
   });
 
   const monthLabel = () => {
@@ -78,8 +79,11 @@ export default function Calendar({ onChange }) {
         <h1>Календарь</h1>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span className="muted" style={{ marginRight: 8, textTransform: 'capitalize' }}>{monthLabel()}</span>
+          <input type="date" value={jumpDate} title="Перейти к дате"
+            onChange={(e) => { const v = e.target.value; setJumpDate(v); if (v) setStart(addDays(v, -Math.floor(DAYS / 2))); }}
+            style={{ fontSize: 13, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
           <button className="btn ghost sm" onClick={() => setStart(addDays(start, -STEP))}>←</button>
-          <button className="btn ghost sm" onClick={() => setStart(addDays(todayIso(), -2))}>Сегодня</button>
+          <button className="btn ghost sm" onClick={() => { setStart(addDays(todayIso(), -2)); setJumpDate(''); }}>Сегодня</button>
           <button className="btn ghost sm" onClick={() => setStart(addDays(start, STEP))}>→</button>
         </div>
       </div>
@@ -92,7 +96,7 @@ export default function Calendar({ onChange }) {
             <div className="cal-car">Машина</div>
             <div className="cal-track">
               {days.map((d) => (
-                <div key={d.iso} className={`cal-cell ${d.weekend ? 'we' : ''} ${d.today ? 'today' : ''}`}>
+                <div key={d.iso} className={`cal-cell ${d.weekend ? 'we' : ''} ${d.today ? 'today' : ''} ${d.picked ? 'picked' : ''}`}>
                   <div className="cal-wd">{d.wd}</div><div className="cal-num">{d.num}</div>
                 </div>
               ))}
@@ -106,7 +110,7 @@ export default function Calendar({ onChange }) {
               </div>
               <div className="cal-track">
                 {days.map((d) => (
-                  <div key={d.iso} className={`cal-cell click ${d.weekend ? 'we' : ''} ${d.today ? 'today' : ''}`}
+                  <div key={d.iso} className={`cal-cell click ${d.weekend ? 'we' : ''} ${d.today ? 'today' : ''} ${d.picked ? 'picked' : ''}`}
                        title="Создать бронь" onClick={() => openNew(car.id, d.iso)} />
                 ))}
                 {rentals.filter((r) => r.car_id === car.id).map((r) => {
