@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { fmtMoney, fmtDate, clientBalance } from '../App.jsx';
 import { usePerms } from '../lib/perms.js';
+import Pagination from './Pagination.jsx';
 import { cars as carsApi, clients as clientsApi, rentals as rentalsApi, carExpenses, officeExpenses, maintenance as maintenanceApi, CAR_EXPENSE_CATS, OFFICE_EXPENSE_CATS } from '../lib/api.js';
 
 const CATEGORIES = ['Обычный', 'Постоянный', 'Лояльный', 'Чёрный список'];
@@ -19,6 +20,9 @@ export default function Clients() {
   const [form, setForm] = useState(null);
   const [q, setQ] = useState('');
   const [debtorsOnly, setDebtorsOnly] = useState(false);
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [q, debtorsOnly]);
+  const PAGE_SIZE = 50;
 
   const load = useCallback(async () => {
     const [c, r] = await Promise.all([clientsApi.list(), rentalsApi.list()]);
@@ -80,6 +84,7 @@ export default function Clients() {
     return [c.name, c.first_name, c.last_name, c.middle_name, c.phone, c.phone2, c.email]
       .some((v) => v && String(v).toLowerCase().includes(term));
   });
+  const pageClients = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <>
@@ -100,7 +105,7 @@ export default function Clients() {
           <table>
             <thead><tr><th>№</th><th>Фамилия</th><th>Имя</th><th>Отчество</th><th>Телефон</th><th>Email</th><th>Баланс</th><th>Дата рожд.</th><th>Источник</th><th></th></tr></thead>
             <tbody>
-              {filtered.map((c) => {
+              {pageClients.map((c) => {
                 const bal = balanceOf(c.id); const debtor = isDebtor(bal);
                 return (
                   <tr key={c.id}>
@@ -123,6 +128,7 @@ export default function Clients() {
             </tbody>
           </table>
         )}
+        {filtered.length > 0 && <Pagination page={page} total={filtered.length} pageSize={PAGE_SIZE} onPage={setPage} />}
       </div>
 
       {form && (

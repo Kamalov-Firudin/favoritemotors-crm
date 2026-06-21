@@ -3,6 +3,9 @@ import { cars as carsApi, clients as clientsApi, rentals as rentalsApi, maintena
 import { fromMinor, fmtMoney, fmtDate, rentalDays, rentalDaysT } from '../App.jsx';
 import { usePerms } from '../lib/perms.js';
 import BookingForm from './BookingForm.jsx';
+import Pagination from './Pagination.jsx';
+
+const PAGE_SIZE = 50;
 
 const today = () => new Date().toISOString().slice(0, 10);
 const newRecord = (status) => ({ car_id: '', client_id: '', issued_at: today(), due_at: '', returned_at: '', amount: '', currency: 'EUR', paid: '', deposit: '', daily_price: '', extra_fee: '', extra_note: '', km_out: '', km_in: '', km_limit: '', over_km_price: '', pickup_location: '', return_location: '', pickup_time: '', return_time: '', status, note: '' });
@@ -19,6 +22,8 @@ export default function Rentals({ mode, onChange }) {
   const [filterFrom, setFilterFrom] = useState('');
   const [filterTo, setFilterTo] = useState('');
   const [showHistory, setShowHistory] = useState(false);
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [filterCar, filterClient, filterFrom, filterTo, showHistory, mode]);
 
   const [returnForm, setReturnForm] = useState(null); // форма возврата
   const [issueForm, setIssueForm] = useState(null);   // форма выдачи (пробег)
@@ -166,6 +171,9 @@ export default function Rentals({ mode, onChange }) {
     : showHistory ? rows.sort((a, b) => b.issued_at.localeCompare(a.issued_at))
     : rows.sort((a, b) => a.issued_at.localeCompare(b.issued_at));
 
+  const totalRows = rows.length;
+  const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
   const hasFilters = filterCar || filterClient || filterFrom || filterTo;
   const clearFilters = () => { setFilterCar(''); setFilterClient(''); setFilterFrom(''); setFilterTo(''); };
 
@@ -228,7 +236,7 @@ export default function Rentals({ mode, onChange }) {
               <th>Выдача</th><th>Приём</th><th>Пробег</th><th>Сумма</th><th>Долг</th><th>Статус</th><th></th>
             </tr></thead>
             <tbody>
-              {rows.map((r) => (
+              {pageRows.map((r) => (
                 <tr key={r.id}>
                   <td><b>{r.car_name}</b> <span className="muted mono">{r.car_plate || ''}</span></td>
                   <td>{r.client_name}</td>
@@ -266,6 +274,7 @@ export default function Rentals({ mode, onChange }) {
             </tbody>
           </table>
         )}
+        {rows.length > 0 && <Pagination page={page} total={totalRows} pageSize={PAGE_SIZE} onPage={setPage} />}
       </div>
 
       {form && <BookingForm initial={form} cars={cars} clients={clients} rentals={list} onClose={() => setForm(null)} onSaved={onSaved} />}
