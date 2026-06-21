@@ -59,6 +59,8 @@ export default function BookingForm({ initial, cars, clients, rentals, onClose, 
       extra_note: t(form.extra_note),
       km_out: form.km_out !== '' && form.km_out != null ? toInt(form.km_out) : null,
       km_in: form.km_in !== '' && form.km_in != null ? toInt(form.km_in) : null,
+      km_limit: form.km_limit !== '' && form.km_limit != null ? toInt(form.km_limit) : null,
+      over_km_price: form.over_km_price !== '' && form.over_km_price != null ? toMinor(form.over_km_price) : null,
       pickup_location: t(form.pickup_location), return_location: t(form.return_location),
       pickup_time: form.pickup_time || null, return_time: form.return_time || null,
       note: t(form.note),
@@ -111,6 +113,9 @@ export default function BookingForm({ initial, cars, clients, rentals, onClose, 
           <div className="field"><label>Цена за 1 день</label><div className="amount-row"><input value={form.daily_price ?? ''} onChange={set('daily_price')} placeholder="0.00" /><select value={form.currency} onChange={set('currency')}>{CURRENCIES.map((c) => <option key={c}>{c}</option>)}</select></div></div>
           <div className="field"><label>Доп. плата (кресло и т.п.)</label><input value={form.extra_fee ?? ''} onChange={set('extra_fee')} placeholder="0.00" /></div>
           <div className="field full"><label>За что доп. плата</label><input value={form.extra_note ?? ''} onChange={set('extra_note')} placeholder="детское кресло, второй водитель..." /></div>
+
+          <div className="field"><label>Лимит км в день</label><input type="number" value={form.km_limit ?? ''} onChange={set('km_limit')} placeholder="напр. 250 (пусто = без лимита)" /></div>
+          <div className="field"><label>Цена за 1 км перепробега</label><input value={form.over_km_price ?? ''} onChange={set('over_km_price')} placeholder="0.00" /></div>
 
           {dailyNum > 0 && (
             <div className="field full"><div className="hint">

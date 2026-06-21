@@ -5,7 +5,7 @@ import { usePerms } from '../lib/perms.js';
 import BookingForm from './BookingForm.jsx';
 
 const today = () => new Date().toISOString().slice(0, 10);
-const newRecord = (status) => ({ car_id: '', client_id: '', issued_at: today(), due_at: '', returned_at: '', amount: '', currency: 'EUR', paid: '', deposit: '', daily_price: '', extra_fee: '', extra_note: '', km_out: '', km_in: '', pickup_location: '', return_location: '', pickup_time: '', return_time: '', status, note: '' });
+const newRecord = (status) => ({ car_id: '', client_id: '', issued_at: today(), due_at: '', returned_at: '', amount: '', currency: 'EUR', paid: '', deposit: '', daily_price: '', extra_fee: '', extra_note: '', km_out: '', km_in: '', km_limit: '', over_km_price: '', pickup_location: '', return_location: '', pickup_time: '', return_time: '', status, note: '' });
 
 export default function Rentals({ mode, onChange }) {
   const { canWrite } = usePerms();
@@ -39,6 +39,7 @@ export default function Rentals({ mode, onChange }) {
     pickup_location: r.pickup_location || '', return_location: r.return_location || '',
     amount: fromMinor(r.amount), paid: r.paid ? fromMinor(r.paid) : '', deposit: r.deposit ? fromMinor(r.deposit) : '',
     daily_price: r.daily_price != null ? fromMinor(r.daily_price) : '', extra_fee: r.extra_fee != null ? fromMinor(r.extra_fee) : '',
+    km_limit: r.km_limit ?? '', over_km_price: r.over_km_price != null ? fromMinor(r.over_km_price) : '',
     extra_note: r.extra_note || '', km_out: r.km_out ?? '', km_in: r.km_in ?? '',
   });
   const onSaved = async () => { setForm(null); await load(); onChange?.(); };
@@ -53,15 +54,33 @@ export default function Rentals({ mode, onChange }) {
   };
 
   // ── Возврат ──
-  // Сумма пересчитывается по фактическому сроку: дни × цена/день + доплата.
-  // Если цена за день не задана (старые аренды) — оставляем сумму как есть.
-  const recalcAmount = (r, dateStr) => {
-    if (!r.daily_price) return fromMinor(r.amount);
+  // Сумма по факту: дни × цена/день + доплата + доплата за перепробег.
+  // Перепробег = пробег − (лимит/день × дни), доплата = перепробег × цена за км.
+  const overageMinor = (r, dateStr, kmIn) => {
+    if (!r.km_limit || !r.over_km_price || r.km_out == null || !Number.isFinite(kmIn)) return 0;
     const days = rentalDays(r.issued_at, dateStr || today());
-    return ((r.daily_price * days + (r.extra_fee || 0)) / 100).toFixed(2);
+    const allowance = r.km_limit * days;
+    const over = Math.max(0, (kmIn - r.km_out) - allowance);
+    return over * r.over_km_price;
+  };
+  const overageInfo = (r, dateStr, kmInStr) => {
+    const kmIn = parseInt(String(kmInStr ?? '').replace(/\s/g, ''), 10);
+    if (!r.km_limit || !r.over_km_price || r.km_out == null || !Number.isFinite(kmIn)) return null;
+    const days = rentalDays(r.issued_at, dateStr || today());
+    const allowance = r.km_limit * days;
+    const dist = kmIn - r.km_out;
+    const over = Math.max(0, dist - allowance);
+    return { days, allowance, dist, over, charge: over * r.over_km_price };
+  };
+  const recalcAmount = (r, dateStr, kmInStr) => {
+    const kmIn = parseInt(String(kmInStr ?? '').replace(/\s/g, ''), 10);
+    const over = overageMinor(r, dateStr, Number.isFinite(kmIn) ? kmIn : NaN);
+    if (!r.daily_price) return ((Number(r.amount) + over) / 100).toFixed(2);
+    const days = rentalDays(r.issued_at, dateStr || today());
+    return ((r.daily_price * days + (r.extra_fee || 0) + over) / 100).toFixed(2);
   };
   const openReturn = (r) => {
-    const recomputed = recalcAmount(r, today());
+    const recomputed = recalcAmount(r, today(), r.km_in ?? '');
     setReturnForm({
       id: r.id, car_name: r.car_name, client_name: r.client_name,
       due_at: r.due_at || '', returned_at: today(), return_time: r.return_time || '',
@@ -321,7 +340,7 @@ export default function Rentals({ mode, onChange }) {
                 <input type="date" value={returnForm.returned_at} onChange={(e) => {
                   const date = e.target.value;
                   const r = returnForm._raw;
-                  setReturnForm({ ...returnForm, returned_at: date, amount: recalcAmount(r, date) });
+                  setReturnForm({ ...returnForm, returned_at: date, amount: recalcAmount(r, date, returnForm.km_in) });
                 }} /></div>
               <div className="field"><label>Время возврата</label>
                 <input type="time" value={returnForm.return_time} onChange={(e) => setReturnForm({ ...returnForm, return_time: e.target.value })} /></div>
@@ -340,7 +359,7 @@ export default function Rentals({ mode, onChange }) {
               <div className="field"><label>Пробег при выдаче (км)</label>
                 <input type="number" value={returnForm.km_out} disabled style={{ background: 'var(--paper)' }} /></div>
               <div className="field"><label>Пробег при возврате (км)</label>
-                <input type="number" value={returnForm.km_in} onChange={(e) => setReturnForm({ ...returnForm, km_in: e.target.value })} placeholder="напр. 118 540" /></div>
+                <input type="number" value={returnForm.km_in} onChange={(e) => { const v = e.target.value; setReturnForm({ ...returnForm, km_in: v, amount: recalcAmount(returnForm._raw, returnForm.returned_at, v) }); }} placeholder="напр. 118 540" /></div>
               {(() => {
                 const out = parseInt(String(returnForm.km_out).replace(/\s/g, ''), 10);
                 const inn = parseInt(String(returnForm.km_in).replace(/\s/g, ''), 10);
@@ -350,6 +369,21 @@ export default function Rentals({ mode, onChange }) {
                   <div className="field full" style={{ gridColumn: '1 / -1' }}>
                     <div className="hint" style={drove < 0 ? { color: 'var(--warn)' } : undefined}>
                       Проехал: <b>{drove.toLocaleString()} км</b>{drove < 0 ? ' — пробег при возврате меньше, проверьте ввод' : ''}
+                    </div>
+                  </div>
+                );
+              })()}
+              {(() => {
+                const o = overageInfo(returnForm._raw, returnForm.returned_at, returnForm.km_in);
+                if (!o) return null;
+                const r = returnForm._raw;
+                return (
+                  <div className="field full" style={{ gridColumn: '1 / -1' }}>
+                    <div className="hint" style={o.over > 0 ? { background: '#fdf0ed', borderColor: '#e8b4a6', color: 'var(--warn)' } : { background: '#eef5ef', borderColor: '#b6d3bd', color: '#3B6D11' }}>
+                      Лимит: {r.km_limit}/дн × {o.days} = <b>{o.allowance.toLocaleString()} км</b> · проехал {o.dist.toLocaleString()} ·{' '}
+                      {o.over > 0
+                        ? <>перепробег <b>{o.over.toLocaleString()} км</b> × {fromMinor(r.over_km_price)} = <b>{fromMinor(o.charge)} {returnForm.currency}</b> (добавлено к итогу)</>
+                        : <>в пределах лимита, доплаты нет</>}
                     </div>
                   </div>
                 );
