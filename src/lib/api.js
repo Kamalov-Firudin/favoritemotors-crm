@@ -363,14 +363,23 @@ export async function getNotifications() {
   rentalsData.filter(r => r.status === 'reserved' && r.issued_at === tomorrowStr).forEach(r => {
     notes.push({ id: `book-tmr-${r.id}`, type: 'warn', text: `Завтра ${fmtDate(r.issued_at)} выдача — ${r.car_name}`, sub: `Бронь: ${r.client_name}`, tab: 'bookings' });
   });
+  rentalsData.filter(r => r.status === 'reserved' && r.issued_at === in2Str).forEach(r => {
+    notes.push({ id: `book-2-${r.id}`, type: 'info', text: `Послезавтра ${fmtDate(r.issued_at)} выдача — ${r.car_name}`, sub: `Бронь: ${r.client_name}`, tab: 'bookings' });
+  });
+  // Осмотр/страховка: показываем на отметках 30, 20, 10 дней, затем каждый день от 5 и просрочку.
+  const stepShow = (days) => days < 0 || days <= 5 || days === 10 || days === 20 || days === 30;
   maintData.forEach(m => {
-    if (m.insurance_date && m.insurance_date <= in15Str) {
+    if (m.insurance_date) {
       const days = Math.round((new Date(m.insurance_date) - new Date(todayStr)) / 86400000);
-      notes.push({ id: `ins-${m.id}`, type: days < 0 ? 'overdue' : 'warn', text: days < 0 ? `Страховка просрочена — ${m.car_name}` : `Страховка истекает через ${days} дн — ${m.car_name}`, sub: `${fmtDate(m.insurance_date)} · ${m.car_plate || ''}`, tab: 'maintenance' });
+      if (stepShow(days)) {
+        notes.push({ id: `ins-${m.id}`, type: days < 0 ? 'overdue' : days <= 5 ? 'urgent' : 'warn', text: days < 0 ? `Страховка просрочена — ${m.car_name}` : `Страховка истекает через ${days} дн — ${m.car_name}`, sub: `${fmtDate(m.insurance_date)} · ${m.car_plate || ''}`, tab: 'maintenance' });
+      }
     }
-    if (m.inspection_date && m.inspection_date <= in15Str) {
+    if (m.inspection_date) {
       const days = Math.round((new Date(m.inspection_date) - new Date(todayStr)) / 86400000);
-      notes.push({ id: `insp-${m.id}`, type: days < 0 ? 'overdue' : 'warn', text: days < 0 ? `Тех. осмотр просрочен — ${m.car_name}` : `Тех. осмотр через ${days} дн — ${m.car_name}`, sub: `${fmtDate(m.inspection_date)} · ${m.car_plate || ''}`, tab: 'maintenance' });
+      if (stepShow(days)) {
+        notes.push({ id: `insp-${m.id}`, type: days < 0 ? 'overdue' : days <= 5 ? 'urgent' : 'warn', text: days < 0 ? `Тех. осмотр просрочен — ${m.car_name}` : `Тех. осмотр через ${days} дн — ${m.car_name}`, sub: `${fmtDate(m.inspection_date)} · ${m.car_plate || ''}`, tab: 'maintenance' });
+      }
     }
     if (m.oil_next_km && m.current_km && m.oil_next_km - m.current_km <= 500) {
       const left = m.oil_next_km - m.current_km;
