@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { cars as carsApi, clients as clientsApi, rentals as rentalsApi, maintenance as maintenanceApi } from '../lib/api.js';
-import { fromMinor, fmtMoney, fmtDate, rentalDays } from '../App.jsx';
+import { fromMinor, fmtMoney, fmtDate, rentalDays, rentalDaysT } from '../App.jsx';
 import { usePerms } from '../lib/perms.js';
 import BookingForm from './BookingForm.jsx';
 
@@ -56,31 +56,31 @@ export default function Rentals({ mode, onChange }) {
   // ── Возврат ──
   // Сумма по факту: дни × цена/день + доплата + доплата за перепробег.
   // Перепробег = пробег − (лимит/день × дни), доплата = перепробег × цена за км.
-  const overageMinor = (r, dateStr, kmIn) => {
+  const overageMinor = (r, dateStr, kmIn, retTime) => {
     if (!r.km_limit || !r.over_km_price || r.km_out == null || !Number.isFinite(kmIn)) return 0;
-    const days = rentalDays(r.issued_at, dateStr || today());
+    const days = rentalDaysT(r.issued_at, r.pickup_time, dateStr || today(), retTime);
     const allowance = r.km_limit * days;
     const over = Math.max(0, (kmIn - r.km_out) - allowance);
     return over * r.over_km_price;
   };
-  const overageInfo = (r, dateStr, kmInStr) => {
+  const overageInfo = (r, dateStr, kmInStr, retTime) => {
     const kmIn = parseInt(String(kmInStr ?? '').replace(/\s/g, ''), 10);
     if (!r.km_limit || !r.over_km_price || r.km_out == null || !Number.isFinite(kmIn)) return null;
-    const days = rentalDays(r.issued_at, dateStr || today());
+    const days = rentalDaysT(r.issued_at, r.pickup_time, dateStr || today(), retTime);
     const allowance = r.km_limit * days;
     const dist = kmIn - r.km_out;
     const over = Math.max(0, dist - allowance);
     return { days, allowance, dist, over, charge: over * r.over_km_price };
   };
-  const recalcAmount = (r, dateStr, kmInStr) => {
+  const recalcAmount = (r, dateStr, kmInStr, retTime) => {
     const kmIn = parseInt(String(kmInStr ?? '').replace(/\s/g, ''), 10);
-    const over = overageMinor(r, dateStr, Number.isFinite(kmIn) ? kmIn : NaN);
+    const over = overageMinor(r, dateStr, Number.isFinite(kmIn) ? kmIn : NaN, retTime);
     if (!r.daily_price) return ((Number(r.amount) + over) / 100).toFixed(2);
-    const days = rentalDays(r.issued_at, dateStr || today());
+    const days = rentalDaysT(r.issued_at, r.pickup_time, dateStr || today(), retTime);
     return ((r.daily_price * days + (r.extra_fee || 0) + over) / 100).toFixed(2);
   };
   const openReturn = (r) => {
-    const recomputed = recalcAmount(r, today(), r.km_in ?? '');
+    const recomputed = recalcAmount(r, today(), r.km_in ?? '', r.return_time || '');
     setReturnForm({
       id: r.id, car_name: r.car_name, client_name: r.client_name,
       due_at: r.due_at || '', returned_at: today(), return_time: r.return_time || '',
@@ -123,7 +123,7 @@ export default function Rentals({ mode, onChange }) {
     // пересчёт суммы, если задана цена за день и итог не правился особо
     let amount = r.amount;
     if (r.daily_price) {
-      const days = rentalDays(r.issued_at, newDue);
+      const days = rentalDaysT(r.issued_at, r.pickup_time, newDue, r.return_time);
       amount = r.daily_price * days + (r.extra_fee || 0);
     }
     try {
@@ -309,7 +309,7 @@ export default function Rentals({ mode, onChange }) {
               </div>
               {extendForm._raw.daily_price ? (
                 <div className="field full" style={{ gridColumn: '1 / -1' }}>
-                  <div className="hint">Новый итог: {rentalDays(extendForm._raw.issued_at, extendForm.due_at)} дн × {fromMinor(extendForm._raw.daily_price)} {extendForm._raw.currency}{extendForm._raw.extra_fee ? ` + доп ${fromMinor(extendForm._raw.extra_fee)}` : ''} = <b>{fromMinor(extendForm._raw.daily_price * rentalDays(extendForm._raw.issued_at, extendForm.due_at) + (extendForm._raw.extra_fee || 0))} {extendForm._raw.currency}</b></div>
+                  <div className="hint">Новый итог: {rentalDaysT(extendForm._raw.issued_at, extendForm._raw.pickup_time, extendForm.due_at, extendForm._raw.return_time)} дн × {fromMinor(extendForm._raw.daily_price)} {extendForm._raw.currency}{extendForm._raw.extra_fee ? ` + доп ${fromMinor(extendForm._raw.extra_fee)}` : ''} = <b>{fromMinor(extendForm._raw.daily_price * rentalDaysT(extendForm._raw.issued_at, extendForm._raw.pickup_time, extendForm.due_at, extendForm._raw.return_time) + (extendForm._raw.extra_fee || 0))} {extendForm._raw.currency}</b></div>
                 </div>
               ) : null}
             </div>
@@ -340,15 +340,15 @@ export default function Rentals({ mode, onChange }) {
                 <input type="date" value={returnForm.returned_at} onChange={(e) => {
                   const date = e.target.value;
                   const r = returnForm._raw;
-                  setReturnForm({ ...returnForm, returned_at: date, amount: recalcAmount(r, date, returnForm.km_in) });
+                  setReturnForm({ ...returnForm, returned_at: date, amount: recalcAmount(r, date, returnForm.km_in, returnForm.return_time) });
                 }} /></div>
               <div className="field"><label>Время возврата</label>
-                <input type="time" value={returnForm.return_time} onChange={(e) => setReturnForm({ ...returnForm, return_time: e.target.value })} /></div>
+                <input type="time" value={returnForm.return_time} onChange={(e) => { const v = e.target.value; setReturnForm({ ...returnForm, return_time: v, amount: recalcAmount(returnForm._raw, returnForm.returned_at, returnForm.km_in, v) }); }} /></div>
 
               {returnForm._raw.daily_price ? (
                 <div className="field full" style={{ gridColumn: '1 / -1' }}>
                   <div className="hint">
-                    По факту: <b>{rentalDays(returnForm._raw.issued_at, returnForm.returned_at)} дн</b> × {fromMinor(returnForm._raw.daily_price)} {returnForm.currency}{returnForm._raw.extra_fee ? ` + доп ${fromMinor(returnForm._raw.extra_fee)}` : ''} = <b>{recalcAmount(returnForm._raw, returnForm.returned_at)} {returnForm.currency}</b>
+                    По факту: <b>{rentalDaysT(returnForm._raw.issued_at, returnForm._raw.pickup_time, returnForm.returned_at, returnForm.return_time)} дн</b> × {fromMinor(returnForm._raw.daily_price)} {returnForm.currency}{returnForm._raw.extra_fee ? ` + доп ${fromMinor(returnForm._raw.extra_fee)}` : ''} = <b>{recalcAmount(returnForm._raw, returnForm.returned_at, returnForm.km_in, returnForm.return_time)} {returnForm.currency}</b>
                     {returnForm.due_at && returnForm.returned_at < returnForm.due_at && <span style={{ color: 'var(--ok)', marginLeft: 6 }}>· вернул раньше, пересчитано</span>}
                     {returnForm.due_at && returnForm.returned_at > returnForm.due_at && <span style={{ color: 'var(--warn)', marginLeft: 6 }}>· дольше срока, пересчитано</span>}
                   </div>
@@ -359,7 +359,7 @@ export default function Rentals({ mode, onChange }) {
               <div className="field"><label>Пробег при выдаче (км)</label>
                 <input type="number" value={returnForm.km_out} disabled style={{ background: 'var(--paper)' }} /></div>
               <div className="field"><label>Пробег при возврате (км)</label>
-                <input type="number" value={returnForm.km_in} onChange={(e) => { const v = e.target.value; setReturnForm({ ...returnForm, km_in: v, amount: recalcAmount(returnForm._raw, returnForm.returned_at, v) }); }} placeholder="напр. 118 540" /></div>
+                <input type="number" value={returnForm.km_in} onChange={(e) => { const v = e.target.value; setReturnForm({ ...returnForm, km_in: v, amount: recalcAmount(returnForm._raw, returnForm.returned_at, v, returnForm.return_time) }); }} placeholder="напр. 118 540" /></div>
               {(() => {
                 const out = parseInt(String(returnForm.km_out).replace(/\s/g, ''), 10);
                 const inn = parseInt(String(returnForm.km_in).replace(/\s/g, ''), 10);
@@ -374,7 +374,7 @@ export default function Rentals({ mode, onChange }) {
                 );
               })()}
               {(() => {
-                const o = overageInfo(returnForm._raw, returnForm.returned_at, returnForm.km_in);
+                const o = overageInfo(returnForm._raw, returnForm.returned_at, returnForm.km_in, returnForm.return_time);
                 if (!o) return null;
                 const r = returnForm._raw;
                 return (

@@ -287,7 +287,7 @@ export const maintenance = {
     await audit('create', 'maintenance', data.id, `Добавлено техсостояние: ${car?.name || '#' + m.car_id}`);
     return data;
   },
-  update: async ({ id, cars: _c, car_name, car_plate, ...rest }) => {
+  update: async ({ id, cars: _c, car: _car, car_name, car_plate, inspDays, insDays, inspStatus, insStatus, oilSt, worstStatus, ...rest }) => {
     await q(supabase.from('maintenance').update(rest).eq('id', id));
     await audit('update', 'maintenance', id, `Изменено техсостояние: ${car_name || '#' + id}`);
   },

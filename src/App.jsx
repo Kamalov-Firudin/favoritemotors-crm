@@ -26,6 +26,18 @@ export const rentalDays = (start, end) => {
   if (!Number.isFinite(ms)) return 0;
   return Math.max(1, Math.ceil(ms / 86400000));
 };
+// Дни с учётом времени: начатые сутки = целый день (биллинг по 24 часа).
+// Льготный час: до +1 часа сверх суток не плюсует день.
+// Если оба времени заданы — считаем по часам; иначе по датам.
+const GRACE_MS = 60 * 60 * 1000; // 1 час
+export const rentalDaysT = (sDate, sTime, eDate, eTime) => {
+  if (!sDate || !eDate) return 0;
+  if (sTime && eTime) {
+    const ms = Date.parse(`${eDate}T${eTime}:00Z`) - Date.parse(`${sDate}T${sTime}:00Z`);
+    if (Number.isFinite(ms)) return Math.max(1, Math.ceil((ms - GRACE_MS) / 86400000));
+  }
+  return rentalDays(sDate, eDate);
+};
 // Баланс клиента по валютам: Σ(amount − paid) по его арендам (кроме отменённых).
 // + = клиент должен компании ; − = компания должна клиенту (переплата, к зачёту).
 // excludeId — исключить конкретную аренду (например, редактируемую сейчас).

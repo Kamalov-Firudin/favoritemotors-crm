@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { cars as carsApi, clients as clientsApi, rentals as rentalsApi } from '../lib/api.js';
-import { CURRENCIES, rentalDays, clientBalance, fmtMoney } from '../App.jsx';
+import { CURRENCIES, rentalDays, rentalDaysT, clientBalance, fmtMoney } from '../App.jsx';
 import ClientPicker from './ClientPicker.jsx';
 
 const toMinor = (s) => { const n = parseFloat(String(s ?? '').replace(',', '.')); return Number.isFinite(n) ? Math.round(n * 100) : 0; };
@@ -22,7 +22,7 @@ export default function BookingForm({ initial, cars, clients, rentals, onClose, 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   const isActive = form.status === 'active';
-  const days = rentalDays(form.issued_at, form.returned_at || form.due_at);
+  const days = rentalDaysT(form.issued_at, form.pickup_time, form.returned_at || form.due_at, form.return_time);
   const dailyNum = parseFloat(String(form.daily_price ?? '').replace(',', '.')) || 0;
   const extraNum = parseFloat(String(form.extra_fee ?? '').replace(',', '.')) || 0;
   const computed = dailyNum > 0 ? (dailyNum * days + extraNum) : null;
@@ -33,7 +33,7 @@ export default function BookingForm({ initial, cars, clients, rentals, onClose, 
       setForm((f) => ({ ...f, amount: computed.toFixed(2) }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.daily_price, form.extra_fee, form.issued_at, form.due_at, form.returned_at]);
+  }, [form.daily_price, form.extra_fee, form.issued_at, form.due_at, form.returned_at, form.pickup_time, form.return_time]);
 
   const onAmount = (e) => { amountTouched.current = true; setForm({ ...form, amount: e.target.value }); };
 

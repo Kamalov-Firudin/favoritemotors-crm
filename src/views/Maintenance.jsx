@@ -115,17 +115,25 @@ export default function Maintenance({ cars }) {
 
   const save = async () => {
     if (!form.car_id) return alert('Выберите машину');
+    const orNull = (v) => (v === '' || v == null ? null : v);
     const payload = {
-      ...form,
       car_id: Number(form.car_id),
+      inspection_date: orNull(form.inspection_date),
+      insurance_date: orNull(form.insurance_date),
+      oil_changed_date: orNull(form.oil_changed_date),
       oil_km: form.oil_km ? Number(form.oil_km) : null,
       oil_next_km: form.oil_next_km ? Number(form.oil_next_km) : null,
       current_km: form.current_km ? Number(form.current_km) : null,
+      note: form.note || null,
     };
-    if (form.id) await maintenanceApi.update(payload);
-    else await maintenanceApi.create(payload);
-    setForm(null);
-    await load();
+    try {
+      if (form.id) await maintenanceApi.update({ id: form.id, ...payload });
+      else await maintenanceApi.create(payload);
+      setForm(null);
+      await load();
+    } catch (e) {
+      alert('Не удалось сохранить: ' + (e?.message || 'ошибка'));
+    }
   };
 
   const remove = async (r) => {

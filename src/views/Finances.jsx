@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { cars as carsApi, rentals as rentalsApi, carExpenses, officeExpenses, CAR_EXPENSE_CATS, OFFICE_EXPENSE_CATS } from '../lib/api.js';
-import { CURRENCIES, toMinor, fromMinor, fmtMoney, fmtDate } from '../App.jsx';
+import { CURRENCIES, toMinor, fromMinor, fmtMoney, fmtDate, rentalDaysT } from '../App.jsx';
 import { usePerms } from '../lib/perms.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -174,8 +174,9 @@ export default function Finances() {
     const cRentals = repRentals.filter(r => r.car_id === car.id);
     const cExp = repCarExp.filter(e => e.car_id === car.id);
     const days = cRentals.reduce((acc, r) => {
-      const end = r.returned_at || r.due_at || reportTo;
-      return acc + Math.max(0, Math.round((new Date(end) - new Date(r.issued_at)) / 86400000));
+      const end = r.returned_at || r.due_at;
+      if (!end) return acc;
+      return acc + rentalDaysT(r.issued_at, r.pickup_time, end, r.return_time);
     }, 0);
     const inc = sumByCurrency(cRentals);
     const exp = sumByCurrency(cExp);
