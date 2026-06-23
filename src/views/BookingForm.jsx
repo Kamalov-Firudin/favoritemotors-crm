@@ -18,22 +18,24 @@ function conflictMessage(e) {
 export default function BookingForm({ initial, cars, clients, rentals, onClose, onSaved }) {
   const [form, setForm] = useState(initial);
   // была ли сумма отредактирована вручную — тогда авто-итог её не перезатирает
-  const amountTouched = useRef(!!(initial.id && initial.amount && !initial.daily_price));
+  const amountTouched = useRef(!!(initial.id && initial.amount && !initial.rental_price && !initial.daily_price));
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   const isActive = form.status === 'active';
   const days = rentalDaysT(form.issued_at, form.pickup_time, form.returned_at || form.due_at, form.return_time);
-  const dailyNum = parseFloat(String(form.daily_price ?? '').replace(',', '.')) || 0;
+  const priceNum = parseFloat(String(form.rental_price ?? '').replace(',', '.')) || 0;       // цена за весь срок
+  const dailyNum = parseFloat(String(form.daily_price ?? '').replace(',', '.')) || 0;        // legacy (старые аренды)
   const extraNum = parseFloat(String(form.extra_fee ?? '').replace(',', '.')) || 0;
-  const computed = dailyNum > 0 ? (dailyNum * days + extraNum) : null;
+  const base = priceNum > 0 ? priceNum : (dailyNum > 0 ? dailyNum * days : 0);
+  const computed = (priceNum > 0 || dailyNum > 0) ? (base + extraNum) : null;
 
-  // Авто-итог: подставляем рассчитанную сумму, пока её не трогали руками и есть цена за день
+  // Авто-итог: подставляем рассчитанную сумму, пока её не трогали руками
   useEffect(() => {
     if (!amountTouched.current && computed != null) {
       setForm((f) => ({ ...f, amount: computed.toFixed(2) }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.daily_price, form.extra_fee, form.issued_at, form.due_at, form.returned_at, form.pickup_time, form.return_time]);
+  }, [form.rental_price, form.daily_price, form.extra_fee, form.issued_at, form.due_at, form.returned_at, form.pickup_time, form.return_time]);
 
   const onAmount = (e) => { amountTouched.current = true; setForm({ ...form, amount: e.target.value }); };
 
@@ -55,6 +57,7 @@ export default function BookingForm({ initial, cars, clients, rentals, onClose, 
       due_at: form.due_at || null, returned_at: form.returned_at || null,
       amount: toMinor(form.amount), paid: toMinor(form.paid), deposit: toMinor(form.deposit),
       daily_price: form.daily_price !== '' && form.daily_price != null ? toMinor(form.daily_price) : null,
+      rental_price: form.rental_price !== '' && form.rental_price != null ? toMinor(form.rental_price) : null,
       extra_fee: form.extra_fee !== '' && form.extra_fee != null ? toMinor(form.extra_fee) : null,
       extra_note: t(form.extra_note),
       km_out: form.km_out !== '' && form.km_out != null ? toInt(form.km_out) : null,
@@ -110,16 +113,18 @@ export default function BookingForm({ initial, cars, clients, rentals, onClose, 
           <div className="field"><label>Возврат: план и время</label><div className="amount-row" style={{ gridTemplateColumns: '1fr 120px' }}><input type="date" value={form.due_at} onChange={set('due_at')} /><input type="time" value={form.return_time || ''} onChange={set('return_time')} /></div></div>
 
           {/* Цена */}
-          <div className="field"><label>Цена за 1 день</label><div className="amount-row"><input value={form.daily_price ?? ''} onChange={set('daily_price')} placeholder="0.00" /><select value={form.currency} onChange={set('currency')}>{CURRENCIES.map((c) => <option key={c}>{c}</option>)}</select></div></div>
+          <div className="field"><label>Цена за аренду (за весь срок)</label><div className="amount-row"><input value={form.rental_price ?? ''} onChange={set('rental_price')} placeholder="напр. 910" /><select value={form.currency} onChange={set('currency')}>{CURRENCIES.map((c) => <option key={c}>{c}</option>)}</select></div></div>
           <div className="field"><label>Доп. плата (кресло и т.п.)</label><input value={form.extra_fee ?? ''} onChange={set('extra_fee')} placeholder="0.00" /></div>
           <div className="field full"><label>За что доп. плата</label><input value={form.extra_note ?? ''} onChange={set('extra_note')} placeholder="детское кресло, второй водитель..." /></div>
 
           <div className="field"><label>Лимит км в день</label><input type="number" value={form.km_limit ?? ''} onChange={set('km_limit')} placeholder="напр. 250 (пусто = без лимита)" /></div>
           <div className="field"><label>Цена за 1 км перепробега</label><input value={form.over_km_price ?? ''} onChange={set('over_km_price')} placeholder="0.00" /></div>
 
-          {dailyNum > 0 && (
+          {(priceNum > 0 || dailyNum > 0) && (
             <div className="field full"><div className="hint">
-              Срок: <b>{days} дн</b> × {dailyNum.toFixed(2)} {form.currency}{extraNum > 0 ? ` + доп ${extraNum.toFixed(2)}` : ''} = <b>{(computed).toFixed(2)} {form.currency}</b>
+              {priceNum > 0
+                ? <>Срок: <b>{days} дн</b> · цена за аренду {priceNum.toFixed(2)} {form.currency} (≈ {(priceNum / Math.max(1, days)).toFixed(2)}/день){extraNum > 0 ? ` + доп ${extraNum.toFixed(2)}` : ''} = <b>{computed.toFixed(2)} {form.currency}</b></>
+                : <>Срок: <b>{days} дн</b> × {dailyNum.toFixed(2)} {form.currency} (старый тариф){extraNum > 0 ? ` + доп ${extraNum.toFixed(2)}` : ''} = <b>{computed.toFixed(2)} {form.currency}</b></>}
               {amountTouched.current && <span style={{ color: 'var(--warn)', marginLeft: 8 }}>· итог изменён вручную</span>}
             </div></div>
           )}

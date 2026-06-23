@@ -68,6 +68,7 @@ export default function Calendar({ onChange }) {
     pickup_location: r.pickup_location || '', return_location: r.return_location || '',
     amount: fromMinor(r.amount), paid: r.paid ? fromMinor(r.paid) : '', deposit: r.deposit ? fromMinor(r.deposit) : '',
     daily_price: r.daily_price != null ? fromMinor(r.daily_price) : '', extra_fee: r.extra_fee != null ? fromMinor(r.extra_fee) : '',
+    rental_price: r.rental_price != null ? fromMinor(r.rental_price) : '',
     extra_note: r.extra_note || '', km_out: r.km_out ?? '', km_in: r.km_in ?? '',
     km_limit: r.km_limit ?? '', over_km_price: r.over_km_price != null ? fromMinor(r.over_km_price) : '',
     });

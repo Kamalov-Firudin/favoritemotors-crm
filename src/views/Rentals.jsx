@@ -8,7 +8,7 @@ import Pagination from './Pagination.jsx';
 const PAGE_SIZE = 50;
 
 const today = () => new Date().toISOString().slice(0, 10);
-const newRecord = (status) => ({ car_id: '', client_id: '', issued_at: today(), due_at: '', returned_at: '', amount: '', currency: 'EUR', paid: '', deposit: '', daily_price: '', extra_fee: '', extra_note: '', km_out: '', km_in: '', km_limit: '', over_km_price: '', pickup_location: '', return_location: '', pickup_time: '', return_time: '', status, note: '' });
+const newRecord = (status) => ({ car_id: '', client_id: '', issued_at: today(), due_at: '', returned_at: '', amount: '', currency: 'EUR', paid: '', deposit: '', rental_price: '', daily_price: '', extra_fee: '', extra_note: '', km_out: '', km_in: '', km_limit: '', over_km_price: '', pickup_location: '', return_location: '', pickup_time: '', return_time: '', status, note: '' });
 
 export default function Rentals({ mode, onChange }) {
   const { canWrite } = usePerms();
@@ -44,6 +44,7 @@ export default function Rentals({ mode, onChange }) {
     pickup_location: r.pickup_location || '', return_location: r.return_location || '',
     amount: fromMinor(r.amount), paid: r.paid ? fromMinor(r.paid) : '', deposit: r.deposit ? fromMinor(r.deposit) : '',
     daily_price: r.daily_price != null ? fromMinor(r.daily_price) : '', extra_fee: r.extra_fee != null ? fromMinor(r.extra_fee) : '',
+    rental_price: r.rental_price != null ? fromMinor(r.rental_price) : '',
     km_limit: r.km_limit ?? '', over_km_price: r.over_km_price != null ? fromMinor(r.over_km_price) : '',
     extra_note: r.extra_note || '', km_out: r.km_out ?? '', km_in: r.km_in ?? '',
   });
@@ -80,9 +81,16 @@ export default function Rentals({ mode, onChange }) {
   const recalcAmount = (r, dateStr, kmInStr, retTime) => {
     const kmIn = parseInt(String(kmInStr ?? '').replace(/\s/g, ''), 10);
     const over = overageMinor(r, dateStr, Number.isFinite(kmIn) ? kmIn : NaN, retTime);
-    if (!r.daily_price) return ((Number(r.amount) + over) / 100).toFixed(2);
-    const days = rentalDaysT(r.issued_at, r.pickup_time, dateStr || today(), retTime);
-    return ((r.daily_price * days + (r.extra_fee || 0) + over) / 100).toFixed(2);
+    const actualDays = rentalDaysT(r.issued_at, r.pickup_time, dateStr || today(), retTime);
+    if (r.rental_price) {
+      const plannedDays = rentalDaysT(r.issued_at, r.pickup_time, r.due_at || dateStr || today(), r.return_time);
+      const base = plannedDays > 0 ? Math.round(r.rental_price * actualDays / plannedDays) : r.rental_price;
+      return ((base + (r.extra_fee || 0) + over) / 100).toFixed(2);
+    }
+    if (r.daily_price) {
+      return ((r.daily_price * actualDays + (r.extra_fee || 0) + over) / 100).toFixed(2);
+    }
+    return ((Number(r.amount) + over) / 100).toFixed(2);
   };
   const openReturn = (r) => {
     const recomputed = recalcAmount(r, today(), r.km_in ?? '', r.return_time || '');
@@ -125,9 +133,13 @@ export default function Rentals({ mode, onChange }) {
     if (r.due_at && newDue < r.due_at) {
       if (!confirm('Новая дата раньше прежней — сократить срок?')) return;
     }
-    // пересчёт суммы, если задана цена за день и итог не правился особо
+    // пересчёт суммы при продлении
     let amount = r.amount;
-    if (r.daily_price) {
+    if (r.rental_price && r.due_at) {
+      const oldDays = rentalDaysT(r.issued_at, r.pickup_time, r.due_at, r.return_time);
+      const newDays = rentalDaysT(r.issued_at, r.pickup_time, newDue, r.return_time);
+      amount = oldDays > 0 ? Math.round(r.rental_price * newDays / oldDays) + (r.extra_fee || 0) : r.amount;
+    } else if (r.daily_price) {
       const days = rentalDaysT(r.issued_at, r.pickup_time, newDue, r.return_time);
       amount = r.daily_price * days + (r.extra_fee || 0);
     }
@@ -316,9 +328,11 @@ export default function Rentals({ mode, onChange }) {
                 <label>Новая дата возврата</label>
                 <input type="date" value={extendForm.due_at} onChange={(e) => setExtendForm({ ...extendForm, due_at: e.target.value })} autoFocus />
               </div>
-              {extendForm._raw.daily_price ? (
+              {(extendForm._raw.rental_price || extendForm._raw.daily_price) ? (
                 <div className="field full" style={{ gridColumn: '1 / -1' }}>
-                  <div className="hint">Новый итог: {rentalDaysT(extendForm._raw.issued_at, extendForm._raw.pickup_time, extendForm.due_at, extendForm._raw.return_time)} дн × {fromMinor(extendForm._raw.daily_price)} {extendForm._raw.currency}{extendForm._raw.extra_fee ? ` + доп ${fromMinor(extendForm._raw.extra_fee)}` : ''} = <b>{fromMinor(extendForm._raw.daily_price * rentalDaysT(extendForm._raw.issued_at, extendForm._raw.pickup_time, extendForm.due_at, extendForm._raw.return_time) + (extendForm._raw.extra_fee || 0))} {extendForm._raw.currency}</b></div>
+                  {extendForm._raw.rental_price && extendForm._raw.due_at
+                    ? <div className="hint">Новый итог пропорционально сроку: <b>{(() => { const o = rentalDaysT(extendForm._raw.issued_at, extendForm._raw.pickup_time, extendForm._raw.due_at, extendForm._raw.return_time); const n = rentalDaysT(extendForm._raw.issued_at, extendForm._raw.pickup_time, extendForm.due_at, extendForm._raw.return_time); return o > 0 ? fromMinor(Math.round(extendForm._raw.rental_price * n / o) + (extendForm._raw.extra_fee || 0)) : fromMinor(extendForm._raw.amount); })()} {extendForm._raw.currency}</b> ({rentalDaysT(extendForm._raw.issued_at, extendForm._raw.pickup_time, extendForm.due_at, extendForm._raw.return_time)} дн)</div>
+                    : <div className="hint">Новый итог: {rentalDaysT(extendForm._raw.issued_at, extendForm._raw.pickup_time, extendForm.due_at, extendForm._raw.return_time)} дн × {fromMinor(extendForm._raw.daily_price)} {extendForm._raw.currency}{extendForm._raw.extra_fee ? ` + доп ${fromMinor(extendForm._raw.extra_fee)}` : ''} = <b>{fromMinor(extendForm._raw.daily_price * rentalDaysT(extendForm._raw.issued_at, extendForm._raw.pickup_time, extendForm.due_at, extendForm._raw.return_time) + (extendForm._raw.extra_fee || 0))} {extendForm._raw.currency}</b></div>}
                 </div>
               ) : null}
             </div>
@@ -354,10 +368,12 @@ export default function Rentals({ mode, onChange }) {
               <div className="field"><label>Время возврата</label>
                 <input type="time" value={returnForm.return_time} onChange={(e) => { const v = e.target.value; setReturnForm({ ...returnForm, return_time: v, amount: recalcAmount(returnForm._raw, returnForm.returned_at, returnForm.km_in, v) }); }} /></div>
 
-              {returnForm._raw.daily_price ? (
+              {(returnForm._raw.rental_price || returnForm._raw.daily_price) ? (
                 <div className="field full" style={{ gridColumn: '1 / -1' }}>
                   <div className="hint">
-                    По факту: <b>{rentalDaysT(returnForm._raw.issued_at, returnForm._raw.pickup_time, returnForm.returned_at, returnForm.return_time)} дн</b> × {fromMinor(returnForm._raw.daily_price)} {returnForm.currency}{returnForm._raw.extra_fee ? ` + доп ${fromMinor(returnForm._raw.extra_fee)}` : ''} = <b>{recalcAmount(returnForm._raw, returnForm.returned_at, returnForm.km_in, returnForm.return_time)} {returnForm.currency}</b>
+                    {returnForm._raw.rental_price
+                      ? <>По факту: <b>{rentalDaysT(returnForm._raw.issued_at, returnForm._raw.pickup_time, returnForm.returned_at, returnForm.return_time)} дн</b> из {rentalDaysT(returnForm._raw.issued_at, returnForm._raw.pickup_time, returnForm._raw.due_at, returnForm._raw.return_time)} оплаченных · итог <b>{recalcAmount(returnForm._raw, returnForm.returned_at, returnForm.km_in, returnForm.return_time)} {returnForm.currency}</b></>
+                      : <>По факту: <b>{rentalDaysT(returnForm._raw.issued_at, returnForm._raw.pickup_time, returnForm.returned_at, returnForm.return_time)} дн</b> × {fromMinor(returnForm._raw.daily_price)} {returnForm.currency}{returnForm._raw.extra_fee ? ` + доп ${fromMinor(returnForm._raw.extra_fee)}` : ''} = <b>{recalcAmount(returnForm._raw, returnForm.returned_at, returnForm.km_in, returnForm.return_time)} {returnForm.currency}</b></>}
                     {returnForm.due_at && returnForm.returned_at < returnForm.due_at && <span style={{ color: 'var(--ok)', marginLeft: 6 }}>· вернул раньше, пересчитано</span>}
                     {returnForm.due_at && returnForm.returned_at > returnForm.due_at && <span style={{ color: 'var(--warn)', marginLeft: 6 }}>· дольше срока, пересчитано</span>}
                   </div>
