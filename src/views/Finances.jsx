@@ -39,6 +39,35 @@ function sumByCurrency(rows) {
   return r;
 }
 
+// Делит сумму аренды по календарным месяцам её срока, пропорционально дням.
+// Завершённые — по фактическим датам (выдача–возврат), идущие/брони — по плановым (выдача–план).
+// Возвращает { 'YYYY-MM': доля_в_копейках }, доли в сумме дают полную сумму.
+const DAY_MS = 86400000;
+function monthSplit(r) {
+  const amt = Number(r.amount) || 0;
+  const startISO = r.issued_at;
+  const endISO = r.returned_at || r.due_at || startISO;
+  if (!startISO) return {};
+  const start = new Date(startISO + 'T00:00:00Z');
+  const end = new Date(endISO + 'T00:00:00Z');
+  const totalDays = Math.round((end - start) / DAY_MS);
+  if (!Number.isFinite(totalDays) || totalDays <= 0) return { [startISO.slice(0, 7)]: amt };
+  const dayCount = {};
+  for (let i = 0; i < totalDays; i++) {
+    const ym = new Date(start.getTime() + i * DAY_MS).toISOString().slice(0, 7);
+    dayCount[ym] = (dayCount[ym] || 0) + 1;
+  }
+  const yms = Object.keys(dayCount).sort();
+  const out = {};
+  let assigned = 0;
+  yms.forEach((ym, idx) => {
+    const portion = idx === yms.length - 1 ? amt - assigned : Math.round(amt * dayCount[ym] / totalDays);
+    assigned += idx === yms.length - 1 ? 0 : portion;
+    out[ym] = portion;
+  });
+  return out;
+}
+
 function SumLine({ sums, color }) {
   const entries = Object.entries(sums);
   if (entries.length === 0) return <span style={{ color: 'var(--muted)' }}>—</span>;
@@ -106,6 +135,20 @@ export default function Finances() {
   const incomeSums = sumByCurrency(filterCar ? filteredRentals.filter((r) => String(r.car_id) === filterCar) : filteredRentals);
   const carExpSums = sumByCurrency(filterCar ? filteredCarExp.filter((e) => String(e.car_id) === filterCar) : filteredCarExp);
   const offExpSums = sumByCurrency(filteredOffExp);
+
+  // Получено (incomeSums) делим: часть месяцу (earnedSums), часть в перенос (carryByMonth)
+  const incRentals = filterCar ? filteredRentals.filter((r) => String(r.car_id) === filterCar) : filteredRentals;
+  const earnedSums = {};
+  const carryByMonth = {}; // { 'YYYY-MM': { cur: minor } }
+  for (const r of incRentals) {
+    const cur = r.currency || 'TRY';
+    const split = monthSplit(r);
+    for (const [ym, portion] of Object.entries(split)) {
+      if (ym === month) earnedSums[cur] = (earnedSums[cur] || 0) + portion;
+      else { (carryByMonth[ym] = carryByMonth[ym] || {}); carryByMonth[ym][cur] = (carryByMonth[ym][cur] || 0) + portion; }
+    }
+  }
+  const carryMonths = Object.keys(carryByMonth).sort();
 
   // Генерируем список месяцев за последние 12
   const months = [];
@@ -217,15 +260,31 @@ export default function Finances() {
         </div>
 
         {/* Сводка месяца */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 20 }}>
-          {[['Доходы', incomeSums, '#3B6D11'], ['Расходы машин', carExpSums, '#993C1D'], ['Расходы офиса', offExpSums, '#993C1D']].map(([label, sums, color]) => (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 20, alignItems: 'start' }}>
+          <div className="card" style={{ padding: '12px 16px', borderLeft: '3px solid #3B6D11' }}>
+            <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 6, fontWeight: 600 }}>Доходы</div>
+            <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em' }}>Получено</div>
+            <div style={{ fontSize: 15, marginBottom: 8 }}><SumLine sums={incomeSums} color="#3B6D11" /></div>
+            <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em' }}>Заработано за месяц</div>
+            <div style={{ fontSize: 14, fontWeight: 500 }}><SumLine sums={earnedSums} color="#3B6D11" /></div>
+            {carryMonths.length > 0 && (
+              <div style={{ marginTop: 8, borderTop: '1px dashed var(--line)', paddingTop: 6 }}>
+                {carryMonths.map((ym) => (
+                  <div key={ym} style={{ fontSize: 11, color: '#8a6d3b', marginTop: 2 }}>
+                    Перенос на {monthLabel(ym)}: <b>{Object.entries(carryByMonth[ym]).map(([cur, v]) => fmtMoney(v, cur)).join(' · ')}</b>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {[['Расходы машин', carExpSums, '#993C1D'], ['Расходы офиса', offExpSums, '#993C1D']].map(([label, sums, color]) => (
             <div key={label} className="card" style={{ padding: '12px 16px' }}>
               <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 4 }}>{label}</div>
               <div style={{ fontSize: 15 }}><SumLine sums={sums} color={color} /></div>
             </div>
           ))}
           <div className="card" style={{ padding: '12px 16px', borderLeft: '3px solid var(--accent)' }}>
-            <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 4 }}>Прибыль по валютам</div>
+            <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 4 }}>Прибыль (получено − расходы)</div>
             {CURRENCIES.map((cur) => {
               const inc = incomeSums[cur] || 0;
               const exp = (carExpSums[cur] || 0) + (filterCar ? 0 : offExpSums[cur] || 0);
