@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { cars as carsApi, rentals as rentalsApi, carExpenses, officeExpenses, CAR_EXPENSE_CATS, OFFICE_EXPENSE_CATS } from '../lib/api.js';
 import { CURRENCIES, toMinor, fromMinor, fmtMoney, fmtDate, rentalDaysT } from '../App.jsx';
+import * as XLSX from 'xlsx';
 import { usePerms } from '../lib/perms.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -97,6 +98,7 @@ export default function Finances() {
   const [reportTo, setReportTo] = useState(periods[0].to);
   const [reportTab, setReportTab] = useState('month'); // 'month' | 'report'
   const [exporting, setExporting] = useState(false);
+  const [exportPick, setExportPick] = useState(false);
   const [rentals, setRentals] = useState([]);
   const [cars, setCars] = useState([]);
   const [carExp, setCarExp] = useState([]);
@@ -196,8 +198,62 @@ export default function Finances() {
   const displayCarExp = filterCar ? filteredCarExp.filter((e) => String(e.car_id) === filterCar) : filteredCarExp;
   const displayRentals = filterCar ? filteredRentals.filter((r) => String(r.car_id) === filterCar) : filteredRentals;
 
-  const exportReport = async () => {
-    alert('Экспорт в Excel доступен в десктопной версии приложения.');
+  const STATUS_RU = { reserved: 'Бронь', active: 'В аренде', completed: 'Завершена', cancelled: 'Отменена' };
+
+  const usedCurrencies = () => {
+    const s = new Set();
+    repRentals.forEach((r) => s.add(r.currency || 'TRY'));
+    repCarExp.forEach((e) => s.add(e.currency || 'TRY'));
+    repOffExp.forEach((e) => s.add(e.currency || 'TRY'));
+    return CURRENCIES.filter((c) => s.has(c));
+  };
+
+  const saveBook = (rows, sheetName, suffix) => {
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    XLSX.writeFile(wb, `Отчёт_${suffix}_${reportFrom}_${reportTo}.xlsx`);
+    setExportPick(false);
+  };
+
+  const exportCars = () => {
+    const curs = usedCurrencies();
+    const header = ['Машина', 'Гос.номер', 'Аренд', 'Дней', 'Км', ...curs.flatMap((c) => [`Доход ${c}`, `Расход ${c}`, `Прибыль ${c}`])];
+    const rows = [header];
+    const tot = {}; curs.forEach((c) => (tot[c] = { inc: 0, exp: 0 }));
+    carReport.forEach(({ car, days, rentals: rc, inc, exp, profit, km }) => {
+      const row = [car.name, car.plate || '', rc, days, km];
+      curs.forEach((c) => { row.push((inc[c] || 0) / 100, (exp[c] || 0) / 100, (profit[c] || 0) / 100); tot[c].inc += inc[c] || 0; tot[c].exp += exp[c] || 0; });
+      rows.push(row);
+    });
+    const totRow = ['ИТОГО', '', '', '', ''];
+    curs.forEach((c) => totRow.push(tot[c].inc / 100, tot[c].exp / 100, (tot[c].inc - tot[c].exp) / 100));
+    rows.push(totRow);
+    saveBook(rows, 'Сводка по машинам', 'машины');
+  };
+
+  const exportRentals = () => {
+    const header = ['Машина', 'Гос.номер', 'Клиент', 'Телефон', 'Выдана', 'Возврат', 'Дней', 'Валюта', 'Сумма', 'Оплачено', 'Долг', 'Статус', 'Заметка'];
+    const rows = [header];
+    repRentals.slice().sort((a, b) => a.issued_at.localeCompare(b.issued_at)).forEach((r) => {
+      const end = r.returned_at || r.due_at;
+      const days = end ? rentalDaysT(r.issued_at, r.pickup_time, end, r.return_time) : '';
+      const ret = r.returned_at ? fmtDate(r.returned_at) : (r.due_at ? 'до ' + fmtDate(r.due_at) : '');
+      const amt = Number(r.amount) || 0, paid = Number(r.paid) || 0;
+      rows.push([r.car_name, r.car_plate || '', r.client_name, r.client_phone || '', fmtDate(r.issued_at), ret, days, r.currency, amt / 100, paid / 100, (amt - paid) / 100, STATUS_RU[r.status] || r.status, r.note || '']);
+    });
+    saveBook(rows, 'Аренды', 'аренды');
+  };
+
+  const exportCashflow = () => {
+    const header = ['Дата', 'Тип', 'Машина/Категория', 'Описание', 'Валюта', 'Сумма'];
+    const all = [];
+    repRentals.forEach((r) => all.push([r.issued_at, 'Доход аренды', r.car_name, `Аренда: ${r.client_name}`, r.currency, (Number(r.amount) || 0) / 100]));
+    repCarExp.forEach((e) => all.push([e.date, 'Расход машины', e.car_name || '', `${e.category || ''} ${e.description || ''}`.trim(), e.currency, (Number(e.amount) || 0) / 100]));
+    repOffExp.forEach((e) => all.push([e.date, 'Расход офиса', e.category || '', e.description || '', e.currency, (Number(e.amount) || 0) / 100]));
+    all.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+    const rows = [header, ...all.map((a) => [fmtDate(a[0]), a[1], a[2], a[3], a[4], a[5]])];
+    saveBook(rows, 'Движение денег', 'деньги');
   };
 
   // Данные для раздела «Отчёт»
@@ -411,8 +467,8 @@ export default function Finances() {
               <label>По</label>
               <input type="date" value={reportTo} onChange={(e) => setReportTo(e.target.value)} style={{ width: 140 }} />
             </div>
-            <button className="btn" onClick={exportReport} disabled={exporting} style={{ marginLeft: 'auto' }}>
-              {exporting ? 'Экспорт...' : '↓ Скачать Excel'}
+            <button className="btn" onClick={() => setExportPick(true)} style={{ marginLeft: 'auto' }}>
+              ↓ Скачать отчёт
             </button>
           </div>
         </div>
@@ -546,6 +602,26 @@ export default function Finances() {
               <div className="field full"><label>Заметка</label><input value={offForm.note || ''} onChange={setF(setOffForm, offForm)('note')} /></div>
             </div>
             <div className="modal-foot"><button className="btn ghost" onClick={() => setOffForm(null)}>Отмена</button><button className="btn" onClick={saveOffExp}>Сохранить</button></div>
+          </div>
+        </div>
+      )}
+      {exportPick && (
+        <div className="overlay">
+          <div className="modal" style={{ maxWidth: 460 }}>
+            <div className="modal-head"><h3>Скачать отчёт</h3><button className="x" onClick={() => setExportPick(false)}>×</button></div>
+            <div className="modal-body" style={{ display: 'block' }}>
+              <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 12 }}>Период: {fmtDate(reportFrom)} — {fmtDate(reportTo)}. Выберите, что выгрузить в Excel:</div>
+              <button className="btn ghost" style={{ width: '100%', justifyContent: 'flex-start', textAlign: 'left', marginBottom: 8, padding: '12px 14px', height: 'auto', display: 'block' }} onClick={exportCars}>
+                <b>Сводка по машинам</b><div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 2 }}>аренд, дней, км, доход, расходы, прибыль по каждой машине</div>
+              </button>
+              <button className="btn ghost" style={{ width: '100%', justifyContent: 'flex-start', textAlign: 'left', marginBottom: 8, padding: '12px 14px', height: 'auto', display: 'block' }} onClick={exportRentals}>
+                <b>Аренды построчно</b><div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 2 }}>каждая аренда: клиент, даты, дни, сумма, оплачено, долг</div>
+              </button>
+              <button className="btn ghost" style={{ width: '100%', justifyContent: 'flex-start', textAlign: 'left', padding: '12px 14px', height: 'auto', display: 'block' }} onClick={exportCashflow}>
+                <b>Движение денег</b><div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 2 }}>доходы аренд и расходы (машин + офиса) построчно</div>
+              </button>
+            </div>
+            <div className="modal-foot"><button className="btn ghost" onClick={() => setExportPick(false)}>Отмена</button></div>
           </div>
         </div>
       )}
