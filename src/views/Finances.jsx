@@ -311,7 +311,7 @@ export default function Finances() {
           </select>
           <select value={filterCar} onChange={(e) => setFilterCar(e.target.value)} style={{ fontSize: 13 }}>
             <option value="">Все машины</option>
-            {cars.map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+            {cars.map((c) => <option key={c.id} value={String(c.id)}>{c.name}{c.plate ? ` · ${c.plate}` : ''}</option>)}
           </select>
         </div>
 
@@ -550,7 +550,7 @@ export default function Finances() {
                 <label>Машина *</label>
                 <select value={carForm.car_id} onChange={setF(setCarForm, carForm)('car_id')}>
                   <option value="">— выберите —</option>
-                  {cars.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {cars.map((c) => <option key={c.id} value={c.id}>{c.name}{c.plate ? ` · ${c.plate}` : ''}</option>)}
                 </select>
               </div>
               <div className="field"><label>Дата *</label><input type="date" value={carForm.date} onChange={setF(setCarForm, carForm)('date')} /></div>
