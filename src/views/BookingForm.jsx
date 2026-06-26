@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { cars as carsApi, clients as clientsApi, rentals as rentalsApi } from '../lib/api.js';
 import { CURRENCIES, rentalDays, rentalDaysT, clientBalance, fmtMoney } from '../App.jsx';
 import ClientPicker from './ClientPicker.jsx';
+import { toast, confirmDialog } from '../lib/ui.jsx';
 
 const toMinor = (s) => { const n = parseFloat(String(s ?? '').replace(',', '.')); return Number.isFinite(n) ? Math.round(n * 100) : 0; };
 const toInt = (s) => { const n = parseInt(String(s ?? '').replace(/\s/g, ''), 10); return Number.isFinite(n) ? n : null; };
@@ -40,15 +41,15 @@ export default function BookingForm({ initial, cars, clients, rentals, onClose, 
   const onAmount = (e) => { amountTouched.current = true; setForm({ ...form, amount: e.target.value }); };
 
   const save = async () => {
-    if (!form.car_id || !form.client_id) return alert('Выберите машину и клиента');
-    if (!form.issued_at) return alert('Укажите дату выдачи');
+    if (!form.car_id || !form.client_id) return toast('Выберите машину и клиента');
+    if (!form.issued_at) return toast('Укажите дату выдачи');
     // запрет: активную аренду нельзя выдать будущей датой (это бронь, не аренда)
     if (isActive && form.issued_at > today()) {
-      return alert('Дата выдачи в будущем — это бронь, а не аренда.\nДля будущей даты создайте бронь во вкладке «Брони», либо поставьте сегодняшнюю дату.');
+      return toast('Дата выдачи в будущем — это бронь, а не аренда.\nДля будущей даты создайте бронь во вкладке «Брони», либо поставьте сегодняшнюю дату.');
     }
     const client = clients.find((c) => c.id === Number(form.client_id));
     if (client?.category === 'Чёрный список') {
-      if (!confirm(`Клиент в чёрном списке: ${client.name}.\nВсё равно оформить?`)) return;
+      if (!(await confirmDialog(`Клиент в чёрном списке: ${client.name}.\nВсё равно оформить?`, { okText: 'Оформить' }))) return;
     }
     const t = (v) => (typeof v === 'string' ? v.trim() || null : v);
     const payload = {
@@ -73,7 +74,7 @@ export default function BookingForm({ initial, cars, clients, rentals, onClose, 
       else await rentalsApi.create(payload);
     } catch (e) {
       const msg = conflictMessage(e);
-      if (msg) { alert(msg); return; }
+      if (msg) { toast(msg, 'error'); return; }
       throw e;
     }
     onSaved();

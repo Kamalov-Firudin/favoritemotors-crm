@@ -12,6 +12,7 @@ import Finances from './views/Finances.jsx';
 import Maintenance from './views/Maintenance.jsx';
 import AuditLog from './views/AuditLog.jsx';
 import Trash from './views/Trash.jsx';
+import { UIRoot, toast } from './lib/ui.jsx';
 import { exportBackup } from './lib/backup.js';
 
 export const CURRENCIES = ['EUR', 'USD', 'TRY'];
@@ -120,9 +121,9 @@ export default function App() {
     try {
       const tables = await exportBackup();
       const total = Object.values(tables).reduce((s, t) => s + t.length, 0);
-      alert(`Бэкап скачан успешно.\nВсего записей: ${total}`);
+      toast(`Бэкап скачан. Всего записей: ${total}`, 'success');
     } catch (e) {
-      alert('Ошибка: ' + e.message);
+      toast('Ошибка: ' + e.message, 'error');
     } finally {
       setBackingUp(false);
     }
@@ -162,6 +163,7 @@ export default function App() {
 
   return (
    <PermsContext.Provider value={perms}>
+    <UIRoot />
     <div className="app">
       <aside className="rail">
         <div className="brand">FavoriteMotors<small>учёт аренды</small></div>

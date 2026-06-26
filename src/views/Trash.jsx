@@ -2,6 +2,18 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { cars as carsApi, clients as clientsApi, rentals as rentalsApi, carExpenses, officeExpenses } from '../lib/api.js';
 import { fmtMoney, fmtDate } from '../App.jsx';
 import { usePerms } from '../lib/perms.js';
+import { toast, confirmDialog } from '../lib/ui.jsx';
+
+// Превращаем сырые ошибки БД в понятный текст
+function humanError(e, tab) {
+  const m = String(e?.message || '');
+  if (m.includes('foreign key') || m.includes('_fkey') || m.includes('violates')) {
+    if (tab === 'clients') return 'Нельзя удалить навсегда: по клиенту есть аренды в истории. Сначала удалите его аренды — или оставьте клиента скрытым в корзине.';
+    if (tab === 'cars') return 'Нельзя удалить навсегда: по машине есть аренды или расходы в истории. Сначала удалите их — или оставьте машину скрытой.';
+    return 'Нельзя удалить навсегда: на эту запись ссылаются другие данные. Сначала удалите связанные записи.';
+  }
+  return 'Ошибка: ' + (m || 'не удалось выполнить');
+}
 
 const TABS = [
   ['clients', 'Клиенты'],
@@ -30,14 +42,14 @@ export default function Trash({ onChange }) {
   const restore = async (id) => {
     setBusy(true);
     try { await api[tab].restore(id); await load(); onChange?.(); }
-    catch (e) { alert('Ошибка: ' + (e?.message || '')); }
+    catch (e) { toast(humanError(e, tab), 'error'); }
     finally { setBusy(false); }
   };
   const purge = async (id) => {
-    if (!confirm('Удалить НАВСЕГДА? Это действие необратимо — запись не восстановить.')) return;
+    if (!(await confirmDialog('Удалить НАВСЕГДА? Это действие необратимо — запись не восстановить.', { danger: true, okText: 'Удалить навсегда' }))) return;
     setBusy(true);
     try { await api[tab].purge(id); await load(); onChange?.(); }
-    catch (e) { alert('Ошибка: ' + (e?.message || '')); }
+    catch (e) { toast(humanError(e, tab), 'error'); }
     finally { setBusy(false); }
   };
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { cars as carsApi, rentals as rentalsApi, carExpenses, officeExpenses, CAR_EXPENSE_CATS, OFFICE_EXPENSE_CATS } from '../lib/api.js';
 import { CURRENCIES, toMinor, fromMinor, fmtMoney, fmtDate, rentalDaysT } from '../App.jsx';
 import * as XLSX from 'xlsx';
+import { toast, confirmDialog } from '../lib/ui.jsx';
 import { usePerms } from '../lib/perms.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -170,8 +171,8 @@ export default function Finances() {
   const setF = (setter, form) => (k) => (e) => setter({ ...form, [k]: e.target.value });
 
   const saveCarExp = async () => {
-    if (!carForm.description.trim()) return alert('Укажите описание');
-    if (!carForm.car_id) return alert('Выберите машину');
+    if (!carForm.description.trim()) return toast('Укажите описание');
+    if (!carForm.car_id) return toast('Выберите машину');
     const payload = { ...carForm, amount: toMinor(carForm.amount) };
     if (carForm.id) await carExpenses.update(payload);
     else await carExpenses.create(payload);
@@ -179,7 +180,7 @@ export default function Finances() {
   };
 
   const saveOffExp = async () => {
-    if (!offForm.description.trim()) return alert('Укажите описание');
+    if (!offForm.description.trim()) return toast('Укажите описание');
     const payload = { ...offForm, amount: toMinor(offForm.amount) };
     if (offForm.id) await officeExpenses.update(payload);
     else await officeExpenses.create(payload);
@@ -187,11 +188,11 @@ export default function Finances() {
   };
 
   const removeCarExp = async (e) => {
-    if (!confirm(`Удалить «${e.description}»?`)) return;
+    if (!(await confirmDialog(`Удалить «${e.description}»?`, { danger: true, okText: 'Удалить' }))) return;
     await carExpenses.remove(e.id); await load();
   };
   const removeOffExp = async (e) => {
-    if (!confirm(`Удалить «${e.description}»?`)) return;
+    if (!(await confirmDialog(`Удалить «${e.description}»?`, { danger: true, okText: 'Удалить' }))) return;
     await officeExpenses.remove(e.id); await load();
   };
 

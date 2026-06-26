@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { maintenance as maintenanceApi } from '../lib/api.js';
 import { fmtDate } from '../App.jsx';
 import { usePerms } from '../lib/perms.js';
+import { toast, confirmDialog } from '../lib/ui.jsx';
 
 // Дней между двумя датами (date2 - date1)
 function daysDiff(dateStr) {
@@ -114,7 +115,7 @@ export default function Maintenance({ cars }) {
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   const save = async () => {
-    if (!form.car_id) return alert('Выберите машину');
+    if (!form.car_id) return toast('Выберите машину');
     const orNull = (v) => (v === '' || v == null ? null : v);
     const payload = {
       car_id: Number(form.car_id),
@@ -132,12 +133,12 @@ export default function Maintenance({ cars }) {
       setForm(null);
       await load();
     } catch (e) {
-      alert('Не удалось сохранить: ' + (e?.message || 'ошибка'));
+      toast('Не удалось сохранить: ' + (e?.message || 'ошибка'), 'error');
     }
   };
 
   const remove = async (r) => {
-    if (!confirm(`Удалить запись для ${r.car?.name || 'машины'}?`)) return;
+    if (!(await confirmDialog(`Удалить запись для ${r.car?.name || 'машины'}?`, { danger: true, okText: 'Удалить' }))) return;
     await maintenanceApi.remove(r.id);
     await load();
   };

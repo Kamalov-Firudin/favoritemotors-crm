@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { usePerms } from '../lib/perms.js';
+import { toast } from '../lib/ui.jsx';
 import { cars as carsApi, clients as clientsApi, rentals as rentalsApi } from '../lib/api.js';
 import { fromMinor } from '../App.jsx';
 import BookingForm from './BookingForm.jsx';
@@ -58,7 +59,7 @@ export default function Calendar({ onChange }) {
 
   const openNew = (carId, iso) => {
     if (!canWrite) return;
-    if (clients.length === 0) return alert('Сначала добавьте хотя бы одного клиента.');
+    if (clients.length === 0) return toast('Сначала добавьте хотя бы одного клиента.');
     setForm({ car_id: carId, client_id: '', issued_at: iso, due_at: '', returned_at: '', amount: '', currency: 'EUR', paid: '', deposit: '', pickup_location: '', return_location: '', pickup_time: '', return_time: '', status: 'reserved', note: '' });
   };
   const openEdit = (r) => {

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { cars as carsApi, rentals as rentalsApi } from '../lib/api.js';
 import { CURRENCIES, toMinor, fromMinor, fmtMoney } from '../App.jsx';
 import { usePerms } from '../lib/perms.js';
+import { toast, confirmDialog } from '../lib/ui.jsx';
 import CarCard from './CarCard.jsx';
 
 const STATUS = [['free', 'Свободна'], ['maintenance', 'На ремонте'], ['sold', 'Продана'], ['hidden', 'Скрыта']];
@@ -32,7 +33,7 @@ export default function Cars({ onChange }) {
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   const save = async () => {
-    if (!form.brand.trim() && !form.model.trim()) return alert('Укажите марку или модель');
+    if (!form.brand.trim() && !form.model.trim()) return toast('Укажите марку или модель');
     const t = (v) => (typeof v === 'string' ? v.trim() || null : v);
     const payload = {
       ...form,
@@ -50,16 +51,16 @@ export default function Cars({ onChange }) {
       else await carsApi.create(payload);
     } catch (e) {
       const m = String(e?.message || '').match(/PLATE_DUP\|(.*)/);
-      if (m) { alert(`Госномер уже используется машиной: ${m[1]}.\nПроверьте — возможно, это та же машина.`); return; }
+      if (m) { toast(`Госномер уже используется машиной: ${m[1]}.\nПроверьте — возможно, это та же машина.`, 'error'); return; }
       throw e;
     }
     setForm(null); await load(); onChange?.();
   };
 
   const hide = async (c) => {
-    if (!confirm(`Скрыть «${c.name}» в корзину? Машина исчезнет из списков, данные сохранятся.`)) return;
+    if (!(await confirmDialog(`Скрыть «${c.name}» в корзину? Машина исчезнет из списков, данные сохранятся.`, { okText: 'Скрыть' }))) return;
     try { await carsApi.hide(c.id); await load(); onChange?.(); }
-    catch (e) { alert('Ошибка: ' + (e?.message || '')); }
+    catch (e) { toast('Ошибка: ' + (e?.message || ''), 'error'); }
   };
 
   return (

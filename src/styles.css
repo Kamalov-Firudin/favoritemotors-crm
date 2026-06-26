@@ -167,3 +167,11 @@ tr:hover td { background: #fbf9f4; }
 .login-box p { margin: 0 0 28px; color: var(--ink-soft); font-size: 14px; }
 .login-box .field { margin-bottom: 14px; }
 .login-error { background: #fbeae5; color: var(--warn); border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px; }
+
+/* Всплывающие уведомления (toast) */
+.toast-wrap { position: fixed; top: 16px; right: 16px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; max-width: 360px; }
+.toast { background: var(--ink, #2a2620); color: #fff; padding: 12px 16px; border-radius: 10px; font-size: 13px; line-height: 1.45; box-shadow: 0 8px 28px rgba(0,0,0,.18); cursor: pointer; white-space: pre-line; animation: toastIn .18s ease; }
+.toast-error { background: #993C1D; }
+.toast-warn  { background: #9c6b16; }
+.toast-success, .toast-ok { background: #3B6D11; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }

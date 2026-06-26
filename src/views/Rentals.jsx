@@ -4,6 +4,7 @@ import { fromMinor, fmtMoney, fmtDate, rentalDays, rentalDaysT } from '../App.js
 import { usePerms } from '../lib/perms.js';
 import BookingForm from './BookingForm.jsx';
 import Pagination from './Pagination.jsx';
+import { toast, confirmDialog } from '../lib/ui.jsx';
 
 const PAGE_SIZE = 50;
 
@@ -36,7 +37,7 @@ export default function Rentals({ mode, onChange }) {
   useEffect(() => { load(); }, [load]);
 
   const openNew = () => {
-    if (cars.length === 0 || clients.length === 0) return alert('Сначала добавьте хотя бы одну машину и одного клиента.');
+    if (cars.length === 0 || clients.length === 0) return toast('Сначала добавьте хотя бы одну машину и одного клиента.');
     setForm(newRecord(isBooking ? 'reserved' : 'active'));
   };
   const openEdit = (r) => setForm({
@@ -129,9 +130,9 @@ export default function Rentals({ mode, onChange }) {
   const confirmExtend = async () => {
     const r = extendForm._raw;
     const newDue = extendForm.due_at;
-    if (!newDue) return alert('Укажите новую дату возврата.');
+    if (!newDue) return toast('Укажите новую дату возврата.');
     if (r.due_at && newDue < r.due_at) {
-      if (!confirm('Новая дата раньше прежней — сократить срок?')) return;
+      if (!(await confirmDialog('Новая дата раньше прежней — сократить срок?'))) return;
     }
     // пересчёт суммы при продлении
     let amount = r.amount;
@@ -147,7 +148,7 @@ export default function Rentals({ mode, onChange }) {
       await rentalsApi.update({ ...r, due_at: newDue, amount });
     } catch (e) {
       const m = String(e?.message || '').match(/CONFLICT\|([^|]*)\|([^|]*)\|([^|]*)/);
-      if (m) { alert(`Нельзя продлить: на эти даты уже есть бронь этой машины (${m[1]}). Выберите другую дату.`); return; }
+      if (m) { toast(`Нельзя продлить: на эти даты уже есть бронь этой машины (${m[1]}). Выберите другую дату.`, 'error'); return; }
       throw e;
     }
     setExtendForm(null); await load(); onChange?.();
@@ -155,11 +156,11 @@ export default function Rentals({ mode, onChange }) {
 
   const giveBack = openReturn;
   const cancel = async (r) => {
-    if (!confirm(`Отменить бронь «${r.car_name}» (${r.client_name})? Даты освободятся.`)) return;
+    if (!(await confirmDialog(`Отменить бронь «${r.car_name}» (${r.client_name})? Даты освободятся.`, { danger: true, okText: 'Отменить бронь' }))) return;
     await rentalsApi.update({ ...r, status: 'cancelled' }); await load(); onChange?.();
   };
   const remove = async (r) => {
-    if (!confirm('Скрыть запись в корзину? Данные сохранятся, можно восстановить.')) return;
+    if (!(await confirmDialog('Скрыть запись в корзину? Данные сохранятся, можно восстановить.', { okText: 'Скрыть' }))) return;
     await rentalsApi.remove(r.id); await load(); onChange?.();
   };
 

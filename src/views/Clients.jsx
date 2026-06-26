@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { fmtMoney, fmtDate, clientBalance } from '../App.jsx';
 import { usePerms } from '../lib/perms.js';
 import Pagination from './Pagination.jsx';
+import { toast, confirmDialog } from '../lib/ui.jsx';
 import { cars as carsApi, clients as clientsApi, rentals as rentalsApi, carExpenses, officeExpenses, maintenance as maintenanceApi, CAR_EXPENSE_CATS, OFFICE_EXPENSE_CATS } from '../lib/api.js';
 
 const CATEGORIES = ['Обычный', 'Постоянный', 'Лояльный', 'Чёрный список'];
@@ -50,7 +51,7 @@ export default function Clients() {
   const openEdit = (c) => setForm({ ...EMPTY, ...c, discount: c.discount || '' });
 
   const save = async () => {
-    if (!form.first_name.trim() && !form.last_name.trim()) return alert('Укажите имя или фамилию');
+    if (!form.first_name.trim() && !form.last_name.trim()) return toast('Укажите имя или фамилию');
     const t = (v) => (typeof v === 'string' ? v.trim() || null : v);
     const payload = {
       ...form,
@@ -70,9 +71,9 @@ export default function Clients() {
   };
 
   const remove = async (c) => {
-    if (!confirm(`Скрыть клиента «${c.name}» в корзину? Данные сохранятся, можно восстановить.`)) return;
+    if (!(await confirmDialog(`Скрыть клиента «${c.name}» в корзину? Данные сохранятся, можно восстановить.`, { okText: 'Скрыть' }))) return;
     try { await clientsApi.remove(c.id); await load(); }
-    catch (e) { alert(e?.message || 'Нельзя скрыть: по клиенту есть аренды в истории.'); }
+    catch (e) { toast(e?.message || 'Нельзя скрыть: по клиенту есть аренды в истории.', 'error'); }
   };
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { fmtMoney, fmtDate, CURRENCIES, toMinor, fromMinor } from '../App.jsx';
 import { carExpenses, officeExpenses, CAR_EXPENSE_CATS, OFFICE_EXPENSE_CATS } from '../lib/api.js';
 import { usePerms } from '../lib/perms.js';
+import { toast, confirmDialog } from '../lib/ui.jsx';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -85,8 +86,8 @@ export default function CarCard({ car, rentals: allRentals, onClose, onChange })
   const expenseSums = sumByCurrency(expenses);
 
   const saveExpense = async () => {
-    if (!expForm.description.trim()) return alert('Укажите описание');
-    if (!expForm.date) return alert('Укажите дату');
+    if (!expForm.description.trim()) return toast('Укажите описание');
+    if (!expForm.date) return toast('Укажите дату');
     const payload = {
       ...expForm,
       car_id: car.id,
@@ -100,7 +101,7 @@ export default function CarCard({ car, rentals: allRentals, onClose, onChange })
   };
 
   const removeExpense = async (e) => {
-    if (!confirm(`Удалить «${e.description}»?`)) return;
+    if (!(await confirmDialog(`Удалить «${e.description}»?`, { danger: true, okText: 'Удалить' }))) return;
     await carExpenses.remove(e.id);
     await loadExpenses();
     onChange?.();
