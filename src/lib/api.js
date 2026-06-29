@@ -198,14 +198,18 @@ export const rentals = {
     await audit('delete', 'rentals', id, `Аренда скрыта в корзину: ${r?.cars?.name || ''} — ${r?.clients?.name || ''}`);
   },
   restore: async (id) => {
+    const { data: r } = await supabase.from('rentals').select('issued_at, due_at, returned_at, cars(name, plate), clients(name)').eq('id', id).single();
     const { error } = await supabase.from('rentals').update({ deleted_at: null }).eq('id', id);
     if (error) throw new Error(error.message);
-    await audit('update', 'rentals', id, `Аренда восстановлена из корзины #${id}`);
+    const label = r ? `${r.cars?.name || ''}${r.cars?.plate ? ' ' + r.cars.plate : ''} — ${r.clients?.name || ''} · ${r.issued_at || ''}${r.returned_at || r.due_at ? '–' + (r.returned_at || r.due_at) : ''}` : `#${id}`;
+    await audit('update', 'rentals', id, `Аренда восстановлена из корзины: ${label}`);
   },
   purge: async (id) => {
+    const { data: r } = await supabase.from('rentals').select('issued_at, due_at, returned_at, cars(name, plate), clients(name)').eq('id', id).single();
+    const label = r ? `${r.cars?.name || ''}${r.cars?.plate ? ' ' + r.cars.plate : ''} — ${r.clients?.name || ''} · ${r.issued_at || ''}${r.returned_at || r.due_at ? '–' + (r.returned_at || r.due_at) : ''}` : `#${id}`;
     const { error } = await supabase.from('rentals').delete().eq('id', id);
     if (error) throw new Error(error.message);
-    await audit('delete', 'rentals', id, `Удалена аренда НАВСЕГДА #${id}`);
+    await audit('delete', 'rentals', id, `Удалена аренда НАВСЕГДА: ${label}`);
   },
 };
 
