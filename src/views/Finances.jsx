@@ -341,9 +341,9 @@ export default function Finances() {
             </div>
           ))}
           <div className="card" style={{ padding: '12px 16px', borderLeft: '3px solid var(--accent)' }}>
-            <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 4 }}>Прибыль (получено − расходы)</div>
+            <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 4 }}>Прибыль (заработано за месяц − расходы)</div>
             {CURRENCIES.map((cur) => {
-              const inc = incomeSums[cur] || 0;
+              const inc = earnedSums[cur] || 0;
               const exp = (carExpSums[cur] || 0) + (filterCar ? 0 : offExpSums[cur] || 0);
               const profit = inc - exp;
               if (inc === 0 && exp === 0) return null;
