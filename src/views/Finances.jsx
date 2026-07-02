@@ -204,7 +204,10 @@ export default function Finances() {
   };
 
   const displayCarExp = filterCar ? filteredCarExp.filter((e) => String(e.car_id) === filterCar) : filteredCarExp;
-  const displayRentals = filterCar ? filteredRentals.filter((r) => String(r.car_id) === filterCar) : filteredRentals;
+  const displayRentals = accrualBase
+    .map((r) => ({ r, portion: monthSplit(r)[month] || 0 }))
+    .filter((x) => x.portion > 0)
+    .sort((a, b) => a.r.issued_at.localeCompare(b.r.issued_at));
 
   const STATUS_RU = { reserved: 'Бронь', active: 'В аренде', completed: 'Завершена', cancelled: 'Отменена' };
 
@@ -424,22 +427,23 @@ export default function Finances() {
           {/* Доходы — полная ширина внизу со скроллом */}
           <div className="card" style={{ gridColumn: '1 / -1' }}>
             <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <b style={{ fontSize: 13 }}>Доходы — из аренд</b>
+              <b style={{ fontSize: 13 }}>Доходы — начислено за месяц</b>
               <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{displayRentals.length} записей</span>
             </div>
             {displayRentals.length === 0
-              ? <div className="empty" style={{ padding: '20px' }}><b>Нет завершённых аренд за этот период</b></div>
+              ? <div className="empty" style={{ padding: '20px' }}><b>Нет аренд, приносящих доход в этом месяце</b></div>
               : (
                 <div style={{ maxHeight: 240, overflowY: 'auto' }}>
                   <table>
-                    <thead><tr><th>Клиент</th><th>Машина</th><th>Выдана</th><th>Возврат</th><th>Сумма</th></tr></thead>
-                    <tbody>{displayRentals.map((r) => (
+                    <thead><tr><th>Клиент</th><th>Машина</th><th>Срок аренды</th><th>Статус</th><th>Начислено за месяц</th><th>Сумма аренды</th></tr></thead>
+                    <tbody>{displayRentals.map(({ r, portion }) => (
                       <tr key={r.id}>
                         <td><b>{r.client_name}</b></td>
-                        <td className="muted">{r.car_name}</td>
-                        <td className="mono muted">{fmtDate(r.issued_at)}</td>
-                        <td className="mono muted">{r.returned_at ? fmtDate(r.returned_at) : (r.due_at ? fmtDate(r.due_at) : '—')}</td>
-                        <td className="mono" style={{ color: '#3B6D11', fontWeight: 500 }}>{fmtMoney(r.amount, r.currency)}</td>
+                        <td className="muted">{r.car_name}{r.car_plate ? ` · ${r.car_plate}` : ''}</td>
+                        <td className="mono muted">{fmtDate(r.issued_at)}–{r.returned_at ? fmtDate(r.returned_at) : (r.due_at ? fmtDate(r.due_at) : '…')}</td>
+                        <td>{r.status === 'active' ? <span className="badge out">идёт</span> : <span className="badge done">завершена</span>}</td>
+                        <td className="mono" style={{ color: '#3B6D11', fontWeight: 600 }}>{fmtMoney(portion, r.currency)}</td>
+                        <td className="mono muted" style={{ fontSize: 12 }}>{fmtMoney(r.amount, r.currency)}</td>
                       </tr>
                     ))}</tbody>
                   </table>
