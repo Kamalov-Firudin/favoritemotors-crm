@@ -139,16 +139,23 @@ export default function Finances() {
   const carExpSums = sumByCurrency(filterCar ? filteredCarExp.filter((e) => String(e.car_id) === filterCar) : filteredCarExp);
   const offExpSums = sumByCurrency(filteredOffExp);
 
-  // Получено (incomeSums) делим: часть месяцу (earnedSums), часть в перенос (carryByMonth)
+  // Получено (incomeSums) — аренды, выданные в этом месяце (деньги пришли в месяце).
+  // Заработано за месяц — доля ВСЕХ аренд (в т.ч. выданных ранее), приходящаяся на этот месяц.
+  // Перенос — доли аренд, выданных в этом месяце, уходящие в будущие месяцы.
   const incRentals = filterCar ? filteredRentals.filter((r) => String(r.car_id) === filterCar) : filteredRentals;
+  const accrualBase = (filterCar ? rentals.filter((r) => String(r.car_id) === filterCar) : rentals)
+    .filter((r) => r.status === 'completed' || r.status === 'active');
   const earnedSums = {};
-  const carryByMonth = {}; // { 'YYYY-MM': { cur: minor } }
+  for (const r of accrualBase) {
+    const split = monthSplit(r);
+    if (split[month]) { const cur = r.currency || 'TRY'; earnedSums[cur] = (earnedSums[cur] || 0) + split[month]; }
+  }
+  const carryByMonth = {}; // { 'YYYY-MM': { cur: minor } } — только будущие месяцы, от выданных в этом месяце
   for (const r of incRentals) {
     const cur = r.currency || 'TRY';
     const split = monthSplit(r);
     for (const [ym, portion] of Object.entries(split)) {
-      if (ym === month) earnedSums[cur] = (earnedSums[cur] || 0) + portion;
-      else { (carryByMonth[ym] = carryByMonth[ym] || {}); carryByMonth[ym][cur] = (carryByMonth[ym][cur] || 0) + portion; }
+      if (ym > month) { (carryByMonth[ym] = carryByMonth[ym] || {}); carryByMonth[ym][cur] = (carryByMonth[ym][cur] || 0) + portion; }
     }
   }
   const carryMonths = Object.keys(carryByMonth).sort();
