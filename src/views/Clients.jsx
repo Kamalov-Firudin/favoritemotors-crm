@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { fmtMoney, fmtDate, clientBalance } from '../App.jsx';
 import { usePerms } from '../lib/perms.js';
 import Pagination from './Pagination.jsx';
+import ClientCard from './ClientCard.jsx';
 import { toast, confirmDialog } from '../lib/ui.jsx';
 import { cars as carsApi, clients as clientsApi, rentals as rentalsApi, carExpenses, officeExpenses, maintenance as maintenanceApi, CAR_EXPENSE_CATS, OFFICE_EXPENSE_CATS } from '../lib/api.js';
 
@@ -19,6 +20,7 @@ export default function Clients() {
   const [rows, setRows] = useState([]);
   const [rentals, setRentals] = useState([]);
   const [form, setForm] = useState(null);
+  const [cardClient, setCardClient] = useState(null); // открытая карточка клиента
   const [q, setQ] = useState('');
   const [debtorsOnly, setDebtorsOnly] = useState(false);
   const [page, setPage] = useState(1);
@@ -111,7 +113,7 @@ export default function Clients() {
                 return (
                   <tr key={c.id}>
                     <td className="mono muted">{c.id}</td>
-                    <td><b>{c.last_name || '—'}</b>{c.category && c.category !== 'Обычный' && <span className={`badge ${c.category === 'Чёрный список' ? 'maintenance' : 'free'}`} style={{ marginLeft: 6 }}>{c.category === 'Чёрный список' ? 'ЧС' : c.category}</span>}</td>
+                    <td><b onClick={() => setCardClient(c)} style={{ cursor: 'pointer', color: 'var(--accent)' }} title="Открыть карточку и историю">{c.last_name || '—'}</b>{c.category && c.category !== 'Обычный' && <span className={`badge ${c.category === 'Чёрный список' ? 'maintenance' : 'free'}`} style={{ marginLeft: 6 }}>{c.category === 'Чёрный список' ? 'ЧС' : c.category}</span>}</td>
                     <td>{c.first_name || '—'}</td>
                     <td className="muted">{c.middle_name || '—'}</td>
                     <td className="mono">{c.phone || '—'}</td>
@@ -131,6 +133,8 @@ export default function Clients() {
         )}
         {filtered.length > 0 && <Pagination page={page} total={filtered.length} pageSize={PAGE_SIZE} onPage={setPage} />}
       </div>
+
+      {cardClient && <ClientCard client={cardClient} rentals={rentals} onClose={() => setCardClient(null)} />}
 
       {form && (
         <div className="overlay">
