@@ -150,10 +150,23 @@ export default function Finances() {
   // Получено = реально поступившие платежи по дате платежа (paid_at) в этом месяце
   const monthPayments = payments.filter((p) => p.paid_at >= from && p.paid_at <= to && (!filterCar || String(p.car_id) === filterCar));
   const receivedSums = sumByCurrency(monthPayments);
-  // Долг = итог − оплачено по арендам, выданным в этом месяце (может быть переплата, тогда минус)
-  const debtBase = filterCar ? filteredRentals.filter((r) => String(r.car_id) === filterCar) : filteredRentals;
-  const debtSums = {};
-  for (const r of debtBase) { const d = Number(r.amount || 0) - Number(r.paid || 0); if (d !== 0) { const cur = r.currency || 'TRY'; debtSums[cur] = (debtSums[cur] || 0) + d; } }
+  // Долг клиентов = сколько ещё не доплачено СЕЙЧАС по всем незакрытым арендам (не только этого месяца —
+  // долги тянутся через месяцы). По-клиентски: переплата клиента гасит его же долг, но не долг другого.
+  // Отдельно — переплата (наш долг перед клиентом). Брони и отменённые в расчёт не идут.
+  const debtRentals = rentals.filter((r) => (r.status === 'active' || r.status === 'completed') && (!filterCar || String(r.car_id) === filterCar));
+  const balByClient = {};
+  for (const r of debtRentals) {
+    const cur = r.currency || 'TRY';
+    const d = Number(r.amount || 0) - Number(r.paid || 0);
+    (balByClient[r.client_id] = balByClient[r.client_id] || {});
+    balByClient[r.client_id][cur] = (balByClient[r.client_id][cur] || 0) + d;
+  }
+  const debtSums = {}, creditSums = {};
+  for (const cid in balByClient) for (const cur in balByClient[cid]) {
+    const v = balByClient[cid][cur];
+    if (v > 0) debtSums[cur] = (debtSums[cur] || 0) + v;
+    else if (v < 0) creditSums[cur] = (creditSums[cur] || 0) + (-v);
+  }
   // Бронь = сумма броней, выдача которых в этом месяце (справочно, в прибыль НЕ идёт)
   const monthBookings = rentals.filter((r) => r.status === 'reserved' && (r.issued_at || '') >= from && (r.issued_at || '') <= to && (!filterCar || String(r.car_id) === filterCar));
   const bookingSums = sumByCurrency(monthBookings);
@@ -356,8 +369,12 @@ export default function Finances() {
             <div style={{ fontSize: 15, marginBottom: 8 }}><SumLine sums={receivedSums} color="#3B6D11" /></div>
             <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em' }}>Заработано за месяц</div>
             <div style={{ fontSize: 14, fontWeight: 500 }}><SumLine sums={earnedSums} color="#3B6D11" /></div>
-            <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em', marginTop: 8 }}>Долг (по арендам месяца)</div>
+            <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em', marginTop: 8 }}>Долг клиентов (всего сейчас)</div>
             <div style={{ fontSize: 13, fontWeight: 500 }}><SumLine sums={debtSums} color="#993C1D" /></div>
+            {Object.keys(creditSums).length > 0 && (<>
+              <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em', marginTop: 8 }}>Переплата (вернуть клиентам)</div>
+              <div style={{ fontSize: 13 }}><SumLine sums={creditSums} color="#3B6D11" /></div>
+            </>)}
             {Object.keys(bookingSums).length > 0 && (<>
               <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em', marginTop: 8 }}>Бронь (не в прибыли)</div>
               <div style={{ fontSize: 13 }}><SumLine sums={bookingSums} color="var(--ink-soft)" /></div>
