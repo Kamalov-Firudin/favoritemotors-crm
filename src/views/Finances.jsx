@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { cars as carsApi, rentals as rentalsApi, carExpenses, officeExpenses, CAR_EXPENSE_CATS, OFFICE_EXPENSE_CATS } from '../lib/api.js';
+import { cars as carsApi, rentals as rentalsApi, carExpenses, officeExpenses, payments as paymentsApi, CAR_EXPENSE_CATS, OFFICE_EXPENSE_CATS } from '../lib/api.js';
 import { CURRENCIES, toMinor, fromMinor, fmtMoney, fmtDate, rentalDaysT } from '../App.jsx';
 import * as XLSX from 'xlsx';
 import { toast, confirmDialog } from '../lib/ui.jsx';
@@ -71,13 +71,20 @@ function monthSplit(r) {
 }
 
 function SumLine({ sums, color }) {
-  const entries = Object.entries(sums);
+  // Валюты в фиксированном порядке, каждая на своей строке.
+  // whiteSpace:nowrap не даёт символу валюты оторваться от числа при переносе,
+  // tabular-nums выравнивает разряды по вертикали.
+  const entries = CURRENCIES.filter((c) => sums[c] != null).map((c) => [c, sums[c]]);
   if (entries.length === 0) return <span style={{ color: 'var(--muted)' }}>—</span>;
-  return entries.map(([cur, amt]) => (
-    <span key={cur} style={{ color, fontWeight: 500, marginRight: 10 }}>
-      {fmtMoney(amt, cur)}
-    </span>
-  ));
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      {entries.map(([cur, amt]) => (
+        <span key={cur} style={{ color, fontWeight: 500, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+          {fmtMoney(amt, cur)}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 const CAT_COLORS = {
@@ -104,20 +111,24 @@ export default function Finances() {
   const [cars, setCars] = useState([]);
   const [carExp, setCarExp] = useState([]);
   const [offExp, setOffExp] = useState([]);
+  const [payments, setPayments] = useState([]);
   const [cats, setCats] = useState({ car: [], office: [] });
   const [carForm, setCarForm] = useState(null);
   const [offForm, setOffForm] = useState(null);
   const [filterCar, setFilterCar] = useState('');
 
   const load = useCallback(async () => {
-    const [r, c, ce, oe, ct] = await Promise.all([
+    const [r, c, ce, oe, pm, ct] = await Promise.all([
       rentalsApi.list(),
       carsApi.list(),
       carExpenses.listAll(),
       officeExpenses.list(),
+      paymentsApi.listAll(),
       Promise.resolve({ car: CAR_EXPENSE_CATS, office: OFFICE_EXPENSE_CATS }),
     ]);
-    setRentals(r); setCars(c); setCarExp(ce); setOffExp(oe); setCats(ct);
+    setRentals(r); setCars(c); setCarExp(ce); setOffExp(oe);
+    setPayments(pm.map((p) => ({ ...p, car_id: p.rentals?.car_id })));
+    setCats(ct);
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -135,7 +146,18 @@ export default function Finances() {
   const filteredCarExp = carExp.filter((e) => e.date >= from && e.date <= to);
   const filteredOffExp = offExp.filter((e) => e.date >= from && e.date <= to);
 
-  const incomeSums = sumByCurrency(filterCar ? filteredRentals.filter((r) => String(r.car_id) === filterCar) : filteredRentals);
+  // ── КАССА месяца ──
+  // Получено = реально поступившие платежи по дате платежа (paid_at) в этом месяце
+  const monthPayments = payments.filter((p) => p.paid_at >= from && p.paid_at <= to && (!filterCar || String(p.car_id) === filterCar));
+  const receivedSums = sumByCurrency(monthPayments);
+  // Долг = итог − оплачено по арендам, выданным в этом месяце (может быть переплата, тогда минус)
+  const debtBase = filterCar ? filteredRentals.filter((r) => String(r.car_id) === filterCar) : filteredRentals;
+  const debtSums = {};
+  for (const r of debtBase) { const d = Number(r.amount || 0) - Number(r.paid || 0); if (d !== 0) { const cur = r.currency || 'TRY'; debtSums[cur] = (debtSums[cur] || 0) + d; } }
+  // Бронь = сумма броней, выдача которых в этом месяце (справочно, в прибыль НЕ идёт)
+  const monthBookings = rentals.filter((r) => r.status === 'reserved' && (r.issued_at || '') >= from && (r.issued_at || '') <= to && (!filterCar || String(r.car_id) === filterCar));
+  const bookingSums = sumByCurrency(monthBookings);
+
   const carExpSums = sumByCurrency(filterCar ? filteredCarExp.filter((e) => String(e.car_id) === filterCar) : filteredCarExp);
   const offExpSums = sumByCurrency(filteredOffExp);
 
@@ -331,9 +353,15 @@ export default function Finances() {
           <div className="card" style={{ padding: '12px 16px', borderLeft: '3px solid #3B6D11' }}>
             <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 6, fontWeight: 600 }}>Доходы</div>
             <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em' }}>Получено</div>
-            <div style={{ fontSize: 15, marginBottom: 8 }}><SumLine sums={incomeSums} color="#3B6D11" /></div>
+            <div style={{ fontSize: 15, marginBottom: 8 }}><SumLine sums={receivedSums} color="#3B6D11" /></div>
             <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em' }}>Заработано за месяц</div>
             <div style={{ fontSize: 14, fontWeight: 500 }}><SumLine sums={earnedSums} color="#3B6D11" /></div>
+            <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em', marginTop: 8 }}>Долг (по арендам месяца)</div>
+            <div style={{ fontSize: 13, fontWeight: 500 }}><SumLine sums={debtSums} color="#993C1D" /></div>
+            {Object.keys(bookingSums).length > 0 && (<>
+              <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em', marginTop: 8 }}>Бронь (не в прибыли)</div>
+              <div style={{ fontSize: 13 }}><SumLine sums={bookingSums} color="var(--ink-soft)" /></div>
+            </>)}
             {carryMonths.length > 0 && (
               <div style={{ marginTop: 8, borderTop: '1px dashed var(--line)', paddingTop: 6 }}>
                 {carryMonths.map((ym) => (
@@ -351,9 +379,9 @@ export default function Finances() {
             </div>
           ))}
           <div className="card" style={{ padding: '12px 16px', borderLeft: '3px solid var(--accent)' }}>
-            <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 4 }}>Прибыль (заработано за месяц − расходы)</div>
+            <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 4 }}>Прибыль (получено − расходы)</div>
             {CURRENCIES.map((cur) => {
-              const inc = earnedSums[cur] || 0;
+              const inc = receivedSums[cur] || 0;
               const exp = (carExpSums[cur] || 0) + (filterCar ? 0 : offExpSums[cur] || 0);
               const profit = inc - exp;
               if (inc === 0 && exp === 0) return null;

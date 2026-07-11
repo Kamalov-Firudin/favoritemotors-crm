@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { cars as carsApi, clients as clientsApi, rentals as rentalsApi } from '../lib/api.js';
+import { cars as carsApi, clients as clientsApi, rentals as rentalsApi, payments as paymentsApi } from '../lib/api.js';
 import { CURRENCIES, rentalDays, rentalDaysT, clientBalance, fmtMoney } from '../App.jsx';
 import ClientPicker from './ClientPicker.jsx';
 import { toast, confirmDialog } from '../lib/ui.jsx';
@@ -56,7 +56,7 @@ export default function BookingForm({ initial, cars, clients, rentals, onClose, 
       ...form,
       car_id: Number(form.car_id), client_id: Number(form.client_id),
       due_at: form.due_at || null, returned_at: form.returned_at || null,
-      amount: toMinor(form.amount), paid: toMinor(form.paid), deposit: toMinor(form.deposit),
+      amount: toMinor(form.amount), deposit: toMinor(form.deposit), // paid не пишем — им управляет журнал платежей
       daily_price: form.daily_price !== '' && form.daily_price != null ? toMinor(form.daily_price) : null,
       rental_price: form.rental_price !== '' && form.rental_price != null ? toMinor(form.rental_price) : null,
       extra_fee: form.extra_fee !== '' && form.extra_fee != null ? toMinor(form.extra_fee) : null,
@@ -69,13 +69,22 @@ export default function BookingForm({ initial, cars, clients, rentals, onClose, 
       pickup_time: form.pickup_time || null, return_time: form.return_time || null,
       note: t(form.note),
     };
+    let saved = null;
     try {
       if (form.id) await rentalsApi.update(payload);
-      else await rentalsApi.create(payload);
+      else saved = await rentalsApi.create(payload);
     } catch (e) {
       const msg = conflictMessage(e);
       if (msg) { toast(msg, 'error'); return; }
       throw e;
+    }
+    // первоначальная оплата при создании → платёж с датой выдачи
+    if (!form.id && saved?.id) {
+      const p0 = toMinor(form.paid);
+      if (p0 !== 0) {
+        try { await paymentsApi.add({ rental_id: saved.id, paid_at: payload.issued_at || today(), amount: p0, currency: payload.currency }); }
+        catch (e) { toast('Аренда создана, но платёж не записался: ' + (e.message || e), 'error'); }
+      }
     }
     onSaved();
   };
@@ -131,7 +140,9 @@ export default function BookingForm({ initial, cars, clients, rentals, onClose, 
           )}
 
           <div className="field"><label>Итоговая сумма</label><input value={form.amount} onChange={onAmount} placeholder="0.00" /></div>
-          <div className="field"><label>Оплачено</label><input value={form.paid} onChange={set('paid')} placeholder="0.00" /></div>
+          {!form.id
+            ? <div className="field"><label>Первоначальная оплата</label><input value={form.paid} onChange={set('paid')} placeholder="0.00" /></div>
+            : <div className="field"><label>Оплачено (итог)</label><input value={form.paid} disabled style={{ background: 'var(--paper)' }} /><div className="hint" style={{ marginTop: 4 }}>Платежи ведутся кнопкой «Платежи» в списке аренд</div></div>}
           <div className="field"><label>Депозит</label><input value={form.deposit} onChange={set('deposit')} placeholder="(возвратный)" /></div>
 
           {/* Пробег при выдаче (для активной аренды) */}

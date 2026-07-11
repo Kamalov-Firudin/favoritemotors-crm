@@ -3,3 +3,7 @@
 backup/oauth_client.json
 backup/node_modules/
 backup/*token*.json
+
+# зависимости и сборка — восстанавливаются из package.json, в git не идут
+node_modules/
+dist/

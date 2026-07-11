@@ -20,6 +20,26 @@ async function q(promise) {
   return data;
 }
 
+// ─── Пагинация ────────────────────────────────────────────────────────────
+// Supabase-шлюз режет ответ на ~1000 строк (max-rows) БЕЗ ошибки. Голый
+// .select('*') молча теряет всё сверх лимита → отчёты занижают деньги.
+// fetchAll тянет страницами, пока страница не окажется неполной.
+// makeQuery() ДОЛЖНА возвращать свежий билдер: .range() применяется поверх,
+// а вторичный .order('id') внутри запросов гарантирует стабильные границы страниц.
+const PAGE = 1000;
+async function fetchAll(makeQuery) {
+  let all = [], from = 0;
+  for (;;) {
+    const { data, error } = await makeQuery().range(from, from + PAGE - 1);
+    if (error) throw new Error(error.message);
+    if (!data || data.length === 0) break;
+    all = all.concat(data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
+
 // ─── Аудит лог ────────────────────────────────────────────────────────────
 async function audit(action, table_name, record_id, description) {
   try {
@@ -82,8 +102,8 @@ export const cars = {
 
 // ─── Клиенты ──────────────────────────────────────────────────────────────
 export const clients = {
-  list: () => q(supabase.from('clients').select('*').is('deleted_at', null).order('last_name').order('first_name')),
-  trash: () => q(supabase.from('clients').select('*').not('deleted_at', 'is', null).order('last_name')),
+  list: () => fetchAll(() => supabase.from('clients').select('*').is('deleted_at', null).order('last_name').order('first_name').order('id')),
+  trash: () => fetchAll(() => supabase.from('clients').select('*').not('deleted_at', 'is', null).order('last_name').order('id')),
   create: async (c) => {
     const name = clientName(c);
     const { data, error } = await supabase.from('clients').insert({ ...c, name }).select().single();
@@ -155,27 +175,28 @@ function mapRental(r) {
 }
 export const rentals = {
   list: async () => {
-    const { data, error } = await supabase
+    const data = await fetchAll(() => supabase
       .from('rentals')
       .select('*, cars(name, plate), clients(name, phone)')
       .is('deleted_at', null)
-      .order('issued_at', { ascending: false });
-    if (error) throw new Error(error.message);
+      .order('issued_at', { ascending: false })
+      .order('id'));
     return data.map(mapRental);
   },
   trash: async () => {
-    const { data, error } = await supabase
+    const data = await fetchAll(() => supabase
       .from('rentals')
       .select('*, cars(name, plate), clients(name, phone)')
       .not('deleted_at', 'is', null)
-      .order('issued_at', { ascending: false });
-    if (error) throw new Error(error.message);
+      .order('issued_at', { ascending: false })
+      .order('id'));
     return data.map(mapRental);
   },
   create: async (r) => {
     const conflict = await findConflict(r);
     if (conflict) throw new Error(`CONFLICT|${conflict.clients?.name}|${conflict.issued_at}|${conflict.returned_at || conflict.due_at || ''}`);
-    const { data, error } = await supabase.from('rentals').insert(r).select('*, cars(name), clients(name)').single();
+    const { paid: _paidIgnored, ...rentalRow } = r; // paid ведёт журнал платежей, не форма
+    const { data, error } = await supabase.from('rentals').insert({ ...rentalRow, paid: 0 }).select('*, cars(name), clients(name)').single();
     if (error) throw new Error(error.message);
     await audit('create', 'rentals', data.id, `Создана бронь: ${data.cars?.name} — ${data.clients?.name} · ${data.issued_at}`);
     return data;
@@ -183,7 +204,7 @@ export const rentals = {
   update: async (r) => {
     const conflict = await findConflict({ ...r, excludeId: r.id });
     if (conflict) throw new Error(`CONFLICT|${conflict.clients?.name}|${conflict.issued_at}|${conflict.returned_at || conflict.due_at || ''}`);
-    const { id, cars: _c, clients: _cl, car_name, car_plate, client_name, client_phone, ...rest } = r;
+    const { id, paid: _paidIgnored, cars: _c, clients: _cl, car_name, car_plate, client_name, client_phone, ...rest } = r; // paid не трогаем — им управляет журнал платежей
     const { error } = await supabase.from('rentals').update(rest).eq('id', id);
     if (error) throw new Error(error.message);
     const carClient = `${car_name || ''} — ${client_name || ''}`.trim();
@@ -213,17 +234,62 @@ export const rentals = {
   },
 };
 
+// ─── Платежи (кассовый журнал) ────────────────────────────────────────────
+// rentals.paid — это КЭШ-итог. Единственный писатель paid — этот модуль:
+// recalcRentalPaid пересчитывает paid как сумму всех платежей аренды.
+// Депозит (deposit) сюда НЕ входит — он возвратный, не доход.
+async function recalcRentalPaid(rental_id) {
+  const rows = await fetchAll(() => supabase.from('payments').select('amount').eq('rental_id', rental_id));
+  const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const { error } = await supabase.from('rentals').update({ paid: total }).eq('id', rental_id);
+  if (error) throw new Error(error.message);
+  return total;
+}
+
+export const payments = {
+  // все платежи аренды, свежие сверху
+  listByRental: (rental_id) => fetchAll(() => supabase
+    .from('payments').select('*').eq('rental_id', rental_id)
+    .order('paid_at', { ascending: false }).order('id', { ascending: false })),
+
+  // все платежи с car_id аренды — для кассовых отчётов (фильтрация по дате на клиенте)
+  listAll: () => fetchAll(() => supabase
+    .from('payments').select('*, rentals(car_id)')
+    .order('paid_at', { ascending: false }).order('id', { ascending: false })),
+
+  // добавить платёж → пишем в журнал и синхронно поднимаем кэш rentals.paid
+  add: async ({ rental_id, paid_at, amount, currency, note }) => {
+    const amt = Number(amount) || 0;
+    const { data, error } = await supabase.from('payments')
+      .insert({ rental_id, paid_at, amount: amt, currency, note: note || null })
+      .select().single();
+    if (error) throw new Error(error.message);
+    const total = await recalcRentalPaid(rental_id);
+    await audit('create', 'payments', data.id, `Платёж ${(amt / 100).toFixed(2)} ${currency} от ${paid_at}`);
+    return { payment: data, paid: total };
+  },
+
+  // удалить платёж → пересчитать кэш
+  remove: async (id) => {
+    const { data: p } = await supabase.from('payments').select('rental_id, amount, currency, paid_at').eq('id', id).single();
+    const { error } = await supabase.from('payments').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+    if (!p) return null;
+    const total = await recalcRentalPaid(p.rental_id);
+    await audit('delete', 'payments', id, `Удалён платёж ${(p.amount / 100).toFixed(2)} ${p.currency} от ${p.paid_at}`);
+    return total;
+  },
+};
+
 // ─── Расходы машин ────────────────────────────────────────────────────────
 export const carExpenses = {
   listByCar: (car_id) => q(supabase.from('car_expenses').select('*').eq('car_id', car_id).is('deleted_at', null).order('date', { ascending: false })),
   listAll: async () => {
-    const { data, error } = await supabase.from('car_expenses').select('*, cars(name)').is('deleted_at', null).order('date', { ascending: false });
-    if (error) throw new Error(error.message);
+    const data = await fetchAll(() => supabase.from('car_expenses').select('*, cars(name)').is('deleted_at', null).order('date', { ascending: false }).order('id'));
     return data.map(e => ({ ...e, car_name: e.cars?.name }));
   },
   trash: async () => {
-    const { data, error } = await supabase.from('car_expenses').select('*, cars(name)').not('deleted_at', 'is', null).order('date', { ascending: false });
-    if (error) throw new Error(error.message);
+    const data = await fetchAll(() => supabase.from('car_expenses').select('*, cars(name)').not('deleted_at', 'is', null).order('date', { ascending: false }).order('id'));
     return data.map(e => ({ ...e, car_name: e.cars?.name }));
   },
   create: async (e) => {
@@ -252,8 +318,8 @@ export const carExpenses = {
 
 // ─── Расходы офиса ────────────────────────────────────────────────────────
 export const officeExpenses = {
-  list: () => q(supabase.from('office_expenses').select('*').is('deleted_at', null).order('date', { ascending: false })),
-  trash: () => q(supabase.from('office_expenses').select('*').not('deleted_at', 'is', null).order('date', { ascending: false })),
+  list: () => fetchAll(() => supabase.from('office_expenses').select('*').is('deleted_at', null).order('date', { ascending: false }).order('id')),
+  trash: () => fetchAll(() => supabase.from('office_expenses').select('*').not('deleted_at', 'is', null).order('date', { ascending: false }).order('id')),
   create: async (e) => {
     const data = await q(supabase.from('office_expenses').insert(e).select().single());
     await audit('create', 'office_expenses', data.id, `Расход офиса: ${e.description} · ${(e.amount/100).toFixed(2)} ${e.currency}`);
