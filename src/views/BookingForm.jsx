@@ -42,6 +42,16 @@ export default function BookingForm({ initial, cars, clients, rentals, onClose, 
 
   const save = async () => {
     if (!form.car_id || !form.client_id) return toast('Выберите машину и клиента');
+    // машина на ремонте / продана — не выдаём в аренду.
+    // исключение: правка уже существующей аренды на той же машине
+    // (машина могла уйти в ремонт уже во время аренды — её надо дать закрыть).
+    const selCar = cars.find((c) => c.id === Number(form.car_id));
+    const carUnchanged = form.id && Number(form.car_id) === Number(initial.car_id);
+    if (selCar && (selCar.status === 'maintenance' || selCar.status === 'sold') && !carUnchanged) {
+      return toast(selCar.status === 'sold'
+        ? `Машина ${selCar.name} продана — её нельзя сдать в аренду.`
+        : `Машина ${selCar.name} на ремонте — её нельзя сдать в аренду.\nСнимите статус «На ремонте» в разделе «Машины», если она уже готова.`);
+    }
     if (!form.issued_at) return toast('Укажите дату выдачи');
     // запрет: активную аренду нельзя выдать будущей датой (это бронь, не аренда)
     if (isActive && form.issued_at > today()) {
@@ -99,7 +109,7 @@ export default function BookingForm({ initial, cars, clients, rentals, onClose, 
           <div className="field"><label>Машина *</label>
             <select value={form.car_id} onChange={set('car_id')}>
               <option value="">— выбрать —</option>
-              {cars.map((c) => <option key={c.id} value={c.id}>{c.name}{c.plate ? ` (${c.plate})` : ''}</option>)}
+              {cars.map((c) => <option key={c.id} value={c.id}>{c.name}{c.plate ? ` (${c.plate})` : ''}{c.status === 'maintenance' ? ' · на ремонте' : c.status === 'sold' ? ' · продана' : ''}</option>)}
             </select>
           </div>
           <ClientPicker clients={clients} value={form.client_id} onChange={(id) => setForm({ ...form, client_id: id })} />
