@@ -173,6 +173,10 @@ export default function Finances() {
 
   const carExpSums = sumByCurrency(filterCar ? filteredCarExp.filter((e) => String(e.car_id) === filterCar) : filteredCarExp);
   const offExpSums = sumByCurrency(filteredOffExp);
+  // Общий расход = расходы машин + расходы офиса, по каждой валюте отдельно
+  const totalExpSums = {};
+  for (const cur of new Set([...Object.keys(carExpSums), ...Object.keys(offExpSums)]))
+    totalExpSums[cur] = (carExpSums[cur] || 0) + (offExpSums[cur] || 0);
 
   // Заработано за месяц — доля ВСЕХ активных/завершённых аренд (в т.ч. выданных ранее),
   //   приходящаяся на выбранный месяц.
@@ -362,7 +366,7 @@ export default function Finances() {
         </div>
 
         {/* Сводка месяца */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 20, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 20, alignItems: 'start' }}>
           <div className="card" style={{ padding: '12px 16px', borderLeft: '3px solid #3B6D11' }}>
             <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 6, fontWeight: 600 }}>Доходы</div>
             <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em' }}>Получено</div>
@@ -389,12 +393,14 @@ export default function Finances() {
               </div>
             )}
           </div>
-          {[['Расходы машин', carExpSums, '#993C1D'], ['Расходы офиса', offExpSums, '#993C1D']].map(([label, sums, color]) => (
-            <div key={label} className="card" style={{ padding: '12px 16px' }}>
-              <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 4 }}>{label}</div>
-              <div style={{ fontSize: 15 }}><SumLine sums={sums} color={color} /></div>
-            </div>
-          ))}
+          <div className="card" style={{ padding: '12px 16px', borderLeft: '3px solid #993C1D' }}>
+            <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 6, fontWeight: 600 }}>Общий расход</div>
+            <div style={{ fontSize: 15, marginBottom: 8 }}><SumLine sums={totalExpSums} color="#993C1D" /></div>
+            <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em' }}>Расходы машин</div>
+            <div style={{ fontSize: 13 }}><SumLine sums={carExpSums} color="#993C1D" /></div>
+            <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em', marginTop: 6 }}>Расходы офиса</div>
+            <div style={{ fontSize: 13 }}><SumLine sums={offExpSums} color="#993C1D" /></div>
+          </div>
           <div className="card" style={{ padding: '12px 16px', borderLeft: '3px solid var(--accent)' }}>
             <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 4 }}>Прибыль (заработано − расходы)</div>
             {CURRENCIES.map((cur) => {
