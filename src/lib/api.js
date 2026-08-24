@@ -239,7 +239,8 @@ export const rentals = {
 // recalcRentalPaid пересчитывает paid как сумму всех платежей аренды.
 // Депозит (deposit) сюда НЕ входит — он возвратный, не доход.
 async function recalcRentalPaid(rental_id) {
-  const rows = await fetchAll(() => supabase.from('payments').select('amount').eq('rental_id', rental_id));
+  // только живые платежи: скрытые в корзину (deleted_at) в долг не входят
+  const rows = await fetchAll(() => supabase.from('payments').select('amount').eq('rental_id', rental_id).is('deleted_at', null));
   const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
   const { error } = await supabase.from('rentals').update({ paid: total }).eq('id', rental_id);
   if (error) throw new Error(error.message);
@@ -247,14 +248,19 @@ async function recalcRentalPaid(rental_id) {
 }
 
 export const payments = {
-  // все платежи аренды, свежие сверху
+  // живые платежи аренды, свежие сверху (скрытые в корзину не показываем)
   listByRental: (rental_id) => fetchAll(() => supabase
-    .from('payments').select('*').eq('rental_id', rental_id)
+    .from('payments').select('*').eq('rental_id', rental_id).is('deleted_at', null)
     .order('paid_at', { ascending: false }).order('id', { ascending: false })),
 
-  // все платежи с car_id аренды — для кассовых отчётов (фильтрация по дате на клиенте)
+  // живые платежи с car_id аренды — для кассовых отчётов (фильтрация по дате на клиенте)
   listAll: () => fetchAll(() => supabase
-    .from('payments').select('*, rentals(car_id)')
+    .from('payments').select('*, rentals(car_id)').is('deleted_at', null)
+    .order('paid_at', { ascending: false }).order('id', { ascending: false })),
+
+  // корзина: скрытые платежи + данные аренды для подписи
+  trash: () => fetchAll(() => supabase
+    .from('payments').select('*, rentals(car_name, client_name)').not('deleted_at', 'is', null)
     .order('paid_at', { ascending: false }).order('id', { ascending: false })),
 
   // добавить платёж → пишем в журнал и синхронно поднимаем кэш rentals.paid
@@ -269,14 +275,36 @@ export const payments = {
     return { payment: data, paid: total };
   },
 
-  // удалить платёж → пересчитать кэш
+  // soft-delete: прячем платёж в корзину (staff+admin) → пересчитать кэш без него
   remove: async (id) => {
+    const { data: p } = await supabase.from('payments').select('rental_id, amount, currency, paid_at').eq('id', id).single();
+    const { error } = await supabase.from('payments').update({ deleted_at: nowIso() }).eq('id', id);
+    if (error) throw new Error(error.message);
+    if (!p) return null;
+    const total = await recalcRentalPaid(p.rental_id);
+    await audit('delete', 'payments', id, `Платёж скрыт в корзину: ${(p.amount / 100).toFixed(2)} ${p.currency} от ${p.paid_at}`);
+    return total;
+  },
+
+  // восстановить платёж из корзины → снова учесть в кэше
+  restore: async (id) => {
+    const { data: p } = await supabase.from('payments').select('rental_id, amount, currency, paid_at').eq('id', id).single();
+    const { error } = await supabase.from('payments').update({ deleted_at: null }).eq('id', id);
+    if (error) throw new Error(error.message);
+    if (!p) return null;
+    const total = await recalcRentalPaid(p.rental_id);
+    await audit('update', 'payments', id, `Платёж восстановлен из корзины: ${(p.amount / 100).toFixed(2)} ${p.currency} от ${p.paid_at}`);
+    return total;
+  },
+
+  // удалить платёж НАВСЕГДА (только admin по RLS) → пересчитать кэш
+  purge: async (id) => {
     const { data: p } = await supabase.from('payments').select('rental_id, amount, currency, paid_at').eq('id', id).single();
     const { error } = await supabase.from('payments').delete().eq('id', id);
     if (error) throw new Error(error.message);
     if (!p) return null;
     const total = await recalcRentalPaid(p.rental_id);
-    await audit('delete', 'payments', id, `Удалён платёж ${(p.amount / 100).toFixed(2)} ${p.currency} от ${p.paid_at}`);
+    await audit('delete', 'payments', id, `Удалён платёж НАВСЕГДА: ${(p.amount / 100).toFixed(2)} ${p.currency} от ${p.paid_at}`);
     return total;
   },
 };

@@ -47,7 +47,7 @@ export default function PaymentsPanel({ rental, onClose, onChanged }) {
   };
 
   const remove = async (p) => {
-    if (!(await confirmDialog(`Удалить платёж ${fmtMoney(p.amount, p.currency)} от ${fmtDate(p.paid_at)}?`, { danger: true, okText: 'Удалить' }))) return;
+    if (!(await confirmDialog(`Убрать платёж ${fmtMoney(p.amount, p.currency)} от ${fmtDate(p.paid_at)} в корзину? Долг пересчитается; платёж можно будет восстановить.`, { okText: 'В корзину' }))) return;
     setBusy(true);
     try { await paymentsApi.remove(p.id); await load(); onChanged?.(); }
     catch (e) { toast(String(e.message || e), 'error'); }

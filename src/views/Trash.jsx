@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { cars as carsApi, clients as clientsApi, rentals as rentalsApi, carExpenses, officeExpenses } from '../lib/api.js';
+import { cars as carsApi, clients as clientsApi, rentals as rentalsApi, carExpenses, officeExpenses, payments as paymentsApi } from '../lib/api.js';
 import { fmtMoney, fmtDate } from '../App.jsx';
 import { usePerms } from '../lib/perms.js';
 import { toast, confirmDialog } from '../lib/ui.jsx';
@@ -18,6 +18,7 @@ function humanError(e, tab) {
 const TABS = [
   ['clients', 'Клиенты'],
   ['rentals', 'Аренды'],
+  ['payments', 'Платежи'],
   ['carExp', 'Расходы машин'],
   ['offExp', 'Расходы офиса'],
   ['cars', 'Машины'],
@@ -26,18 +27,18 @@ const TABS = [
 export default function Trash({ onChange }) {
   const { canPurge } = usePerms();
   const [tab, setTab] = useState('clients');
-  const [data, setData] = useState({ clients: [], rentals: [], carExp: [], offExp: [], cars: [] });
+  const [data, setData] = useState({ clients: [], rentals: [], payments: [], carExp: [], offExp: [], cars: [] });
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const [cl, re, ce, oe, ca] = await Promise.all([
-      clientsApi.trash(), rentalsApi.trash(), carExpenses.trash(), officeExpenses.trash(), carsApi.trash(),
+    const [cl, re, pa, ce, oe, ca] = await Promise.all([
+      clientsApi.trash(), rentalsApi.trash(), paymentsApi.trash(), carExpenses.trash(), officeExpenses.trash(), carsApi.trash(),
     ]);
-    setData({ clients: cl, rentals: re, carExp: ce, offExp: oe, cars: ca });
+    setData({ clients: cl, rentals: re, payments: pa, carExp: ce, offExp: oe, cars: ca });
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  const api = { clients: clientsApi, rentals: rentalsApi, carExp: carExpenses, offExp: officeExpenses, cars: carsApi };
+  const api = { clients: clientsApi, rentals: rentalsApi, payments: paymentsApi, carExp: carExpenses, offExp: officeExpenses, cars: carsApi };
 
   const restore = async (id) => {
     setBusy(true);
@@ -58,6 +59,7 @@ export default function Trash({ onChange }) {
   const renderRow = (r) => {
     if (tab === 'clients') return <><b>{r.name || '—'}</b> <span className="muted">{r.phone || ''}</span></>;
     if (tab === 'rentals') return <><b>{r.car_name || r.cars?.name || '—'}</b> — {r.client_name || r.clients?.name || '—'} <span className="muted mono">{fmtDate(r.issued_at)}</span></>;
+    if (tab === 'payments') return <><b>{fmtMoney(r.amount, r.currency)}</b> <span className="muted mono">{fmtDate(r.paid_at)}</span> <span className="muted">{[r.rentals?.car_name, r.rentals?.client_name].filter(Boolean).join(' — ')}{r.note ? ` · ${r.note}` : ''}</span></>;
     if (tab === 'carExp') return <><b>{r.description || '—'}</b> <span className="muted">{r.car_name || ''} · {fmtMoney(r.amount, r.currency)}</span></>;
     if (tab === 'offExp') return <><b>{r.description || '—'}</b> <span className="muted">{r.category || ''} · {fmtMoney(r.amount, r.currency)}</span></>;
     if (tab === 'cars') return <><b>{r.name || '—'}</b> <span className="muted">{r.plate || ''}</span></>;
