@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { payments as paymentsApi } from '../lib/api.js';
 import { fmtMoney, fmtDate } from '../App.jsx';
 import { usePerms } from '../lib/perms.js';
@@ -26,10 +26,16 @@ export default function PaymentsPanel({ rental, onClose, onChanged }) {
   const paidTotal = (rows || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
   const debt = Number(rental.amount || 0) - paidTotal;
 
+  const addingRef = useRef(false); // синхронный замок против двойного клика
   const add = async () => {
+    if (addingRef.current) return; // повторный вызов до завершения — игнор
     const amt = toMinor(form.amount);
     if (!form.paid_at) return toast('Укажите дату платежа');
     if (amt === 0) return toast('Укажите сумму платежа (можно отрицательную — возврат/коррекция)');
+    // Защита от случайного дубля: платёж с той же датой и той же суммой уже есть.
+    const dup = (rows || []).find((p) => p.paid_at === form.paid_at && Number(p.amount) === amt);
+    if (dup && !(await confirmDialog(`Платёж ${fmtMoney(amt, cur)} от ${fmtDate(form.paid_at)} уже записан по этой аренде. Добавить ещё один такой же?`, { okText: 'Всё равно добавить' }))) return;
+    addingRef.current = true;
     setBusy(true);
     try {
       await paymentsApi.add({ rental_id: rental.id, paid_at: form.paid_at, amount: amt, currency: cur, note: form.note.trim() || null });
@@ -37,7 +43,7 @@ export default function PaymentsPanel({ rental, onClose, onChanged }) {
       await load();
       onChanged?.();
     } catch (e) { toast(String(e.message || e), 'error'); }
-    finally { setBusy(false); }
+    finally { setBusy(false); addingRef.current = false; }
   };
 
   const remove = async (p) => {

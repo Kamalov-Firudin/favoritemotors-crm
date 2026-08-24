@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { cars as carsApi, clients as clientsApi, rentals as rentalsApi, maintenance as maintenanceApi, payments as paymentsApi } from '../lib/api.js';
+import { cars as carsApi, clients as clientsApi, rentals as rentalsApi, maintenance as maintenanceApi } from '../lib/api.js';
 import { fromMinor, fmtMoney, fmtDate, rentalDays, rentalDaysT } from '../App.jsx';
 import { usePerms } from '../lib/perms.js';
 import BookingForm from './BookingForm.jsx';
@@ -101,8 +101,6 @@ export default function Rentals({ mode, onChange }) {
       id: r.id, car_name: r.car_name, client_name: r.client_name,
       due_at: r.due_at || '', returned_at: today(), return_time: r.return_time || '',
       amount: recomputed,
-      // «Оплата при возврате» по умолчанию = остаток долга (итог − уже оплачено)
-      paid: fromMinor(Math.max(0, Math.round(parseFloat(recomputed) * 100) - Number(r.paid || 0))),
       currency: r.currency, note: r.note || '',
       km_out: r.km_out ?? '', km_in: r.km_in ?? '',
       _raw: r,
@@ -111,7 +109,6 @@ export default function Rentals({ mode, onChange }) {
   const confirmReturn = async () => {
     const r = returnForm._raw;
     const kmIn = returnForm.km_in !== '' ? parseInt(String(returnForm.km_in).replace(/\s/g, ''), 10) : null;
-    const payMinor = Math.round(parseFloat(returnForm.paid || 0) * 100); // оплата именно при этом возврате
     const updated = {
       ...r,
       status: 'completed',
@@ -121,10 +118,8 @@ export default function Rentals({ mode, onChange }) {
       km_in: Number.isFinite(kmIn) ? kmIn : null,
       note: returnForm.note || r.note || '',
     };
-    await rentalsApi.update(updated); // paid не пишем — им управляет журнал платежей
-    if (payMinor !== 0) {
-      await paymentsApi.add({ rental_id: r.id, paid_at: returnForm.returned_at || today(), amount: payMinor, currency: r.currency });
-    }
+    // Возврат НЕ создаёт платежей: оплата вводится только вручную в разделе «Платежи».
+    await rentalsApi.update(updated);
     // обновляем текущий пробег машины в техсостоянии → сработает уведомление о масле
     if (Number.isFinite(kmIn)) {
       try { await maintenanceApi.setCurrentKm(r.car_id, kmIn); } catch (e) { /* нет записи техсостояния — не критично */ }
@@ -427,9 +422,6 @@ export default function Rentals({ mode, onChange }) {
 
               <div className="field"><label>Итоговая сумма ({returnForm.currency})</label>
                 <input type="number" value={returnForm.amount} step="0.01" onChange={(e) => setReturnForm({ ...returnForm, amount: e.target.value })} /></div>
-              <div className="field"><label>Оплата при возврате ({returnForm.currency})</label>
-                <input type="number" value={returnForm.paid} step="0.01" onChange={(e) => setReturnForm({ ...returnForm, paid: e.target.value })} />
-                {Number(returnForm._raw.paid || 0) > 0 && <div className="hint" style={{ marginTop: 4 }}>Ранее уже оплачено: <b>{fmtMoney(returnForm._raw.paid, returnForm.currency)}</b></div>}</div>
 
               <div className="field full" style={{ gridColumn: '1 / -1' }}>
                 <label>Заметка при возврате (состояние, повреждения, штраф...)</label>
@@ -438,13 +430,14 @@ export default function Rentals({ mode, onChange }) {
               </div>
 
               {(() => {
+                // Платёж при возврате здесь НЕ вводится и НЕ создаётся — только справка по долгу.
+                // Оплату записывают вручную кнопкой «Платежи» на строке аренды.
                 const already = Number(returnForm._raw.paid || 0);
                 const amt = Math.round((parseFloat(returnForm.amount) || 0) * 100);
-                const payNow = Math.round((parseFloat(returnForm.paid) || 0) * 100);
-                const d = amt - (already + payNow); // остаток после этого платежа
-                if (d > 0) return <div style={{ gridColumn: '1 / -1', background: '#fdf0ed', border: '1px solid #e8b4a6', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--warn)' }}>⚠ Останется долг: <b>{fmtMoney(d, returnForm.currency)}</b></div>;
-                if (d < 0) return <div style={{ gridColumn: '1 / -1', background: '#eef5ef', border: '1px solid #b6d3bd', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#3B6D11' }}>↩ Переплата, к возврату клиенту: <b>{fmtMoney(-d, returnForm.currency)}</b></div>;
-                return null;
+                const d = amt - already; // долг по итогу после возврата (с учётом уже внесённых платежей)
+                if (d > 0) return <div style={{ gridColumn: '1 / -1', background: '#fdf0ed', border: '1px solid #e8b4a6', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--warn)' }}>⚠ Останется долг: <b>{fmtMoney(d, returnForm.currency)}</b> — запишите оплату вручную в разделе «Платежи»{already > 0 ? ` (уже оплачено ${fmtMoney(already, returnForm.currency)})` : ''}</div>;
+                if (d < 0) return <div style={{ gridColumn: '1 / -1', background: '#eef5ef', border: '1px solid #b6d3bd', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#3B6D11' }}>↩ Переплата, к возврату/зачёту клиенту: <b>{fmtMoney(-d, returnForm.currency)}</b> (оплачено {fmtMoney(already, returnForm.currency)})</div>;
+                return <div style={{ gridColumn: '1 / -1', background: '#eef5ef', border: '1px solid #b6d3bd', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#3B6D11' }}>✓ Оплачено полностью</div>;
               })()}
             </div>
             <div className="modal-foot"><button className="btn ghost" onClick={() => setReturnForm(null)}>Отмена</button><button className="btn" onClick={confirmReturn}>Завершить аренду</button></div>
