@@ -174,10 +174,10 @@ export default function Finances() {
   const carExpSums = sumByCurrency(filterCar ? filteredCarExp.filter((e) => String(e.car_id) === filterCar) : filteredCarExp);
   const offExpSums = sumByCurrency(filteredOffExp);
 
-  // Получено (incomeSums) — аренды, выданные в этом месяце (деньги пришли в месяце).
-  // Заработано за месяц — доля ВСЕХ аренд (в т.ч. выданных ранее), приходящаяся на этот месяц.
-  // Перенос — доли аренд, выданных в этом месяце, уходящие в будущие месяцы.
-  const incRentals = filterCar ? filteredRentals.filter((r) => String(r.car_id) === filterCar) : filteredRentals;
+  // Заработано за месяц — доля ВСЕХ активных/завершённых аренд (в т.ч. выданных ранее),
+  //   приходящаяся на выбранный месяц.
+  // Ожидается в будущих месяцах — доли тех же аренд, приходящиеся на месяцы после выбранного
+  //   (полный прогноз дохода, включая длинные аренды, выданные в прошлых месяцах).
   const accrualBase = (filterCar ? rentals.filter((r) => String(r.car_id) === filterCar) : rentals)
     .filter((r) => r.status === 'completed' || r.status === 'active');
   const earnedSums = {};
@@ -185,8 +185,8 @@ export default function Finances() {
     const split = monthSplit(r);
     if (split[month]) { const cur = r.currency || 'TRY'; earnedSums[cur] = (earnedSums[cur] || 0) + split[month]; }
   }
-  const carryByMonth = {}; // { 'YYYY-MM': { cur: minor } } — только будущие месяцы, от выданных в этом месяце
-  for (const r of incRentals) {
+  const carryByMonth = {}; // { 'YYYY-MM': { cur: minor } } — доли ВСЕХ аренд в будущих месяцах (прогноз)
+  for (const r of accrualBase) {
     const cur = r.currency || 'TRY';
     const split = monthSplit(r);
     for (const [ym, portion] of Object.entries(split)) {
@@ -383,7 +383,7 @@ export default function Finances() {
               <div style={{ marginTop: 8, borderTop: '1px dashed var(--line)', paddingTop: 6 }}>
                 {carryMonths.map((ym) => (
                   <div key={ym} style={{ fontSize: 11, color: '#8a6d3b', marginTop: 2 }}>
-                    Перенос на {monthLabel(ym)}: <b>{Object.entries(carryByMonth[ym]).map(([cur, v]) => fmtMoney(v, cur)).join(' · ')}</b>
+                    Ожидается в {monthLabel(ym)}: <b>{Object.entries(carryByMonth[ym]).map(([cur, v]) => fmtMoney(v, cur)).join(' · ')}</b>
                   </div>
                 ))}
               </div>
