@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { cars as carsApi, rentals as rentalsApi, carExpenses, officeExpenses, payments as paymentsApi, CAR_EXPENSE_CATS, OFFICE_EXPENSE_CATS } from '../lib/api.js';
+import { cars as carsApi, rentals as rentalsApi, carExpenses, officeExpenses, payments as paymentsApi, CAR_EXPENSE_CATS, OFFICE_EXPENSE_CATS, PAYMENT_KIND_LABELS } from '../lib/api.js';
 import { CURRENCIES, toMinor, fromMinor, fmtMoney, fmtDate, rentalDaysT } from '../App.jsx';
 import * as XLSX from 'xlsx';
 import { toast, confirmDialog } from '../lib/ui.jsx';
@@ -149,7 +149,11 @@ export default function Finances() {
   // ── КАССА месяца ──
   // Получено = реально поступившие платежи по дате платежа (paid_at) в этом месяце
   const monthPayments = payments.filter((p) => p.paid_at >= from && p.paid_at <= to && (!filterCar || String(p.car_id) === filterCar));
-  const receivedSums = sumByCurrency(monthPayments);
+  const receivedSums = sumByCurrency(monthPayments); // всего поступило (аренда + прочее)
+  // Разнос прихода по категории: аренда отдельно, возмещения/штрафы/прочее отдельно.
+  const isRentalP = (p) => (p.kind ?? 'rental') === 'rental';
+  const receivedRentalSums = sumByCurrency(monthPayments.filter(isRentalP));
+  const receivedOtherSums = sumByCurrency(monthPayments.filter((p) => !isRentalP(p)));
   // Долг клиентов = сколько ещё не доплачено СЕЙЧАС по всем незакрытым арендам (не только этого месяца —
   // долги тянутся через месяцы). По-клиентски: переплата клиента гасит его же долг, но не долг другого.
   // Отдельно — переплата (наш долг перед клиентом). Брони и отменённые в расчёт не идут.
@@ -177,6 +181,13 @@ export default function Finances() {
   const totalExpSums = {};
   for (const cur of new Set([...Object.keys(carExpSums), ...Object.keys(offExpSums)]))
     totalExpSums[cur] = (carExpSums[cur] || 0) + (offExpSums[cur] || 0);
+
+  // Касса за месяц = все поступления (аренда + прочее) − все расходы (машины + офис),
+  // по каждой валюте отдельно (валюты не смешиваются). Это движение налички за месяц,
+  // НЕ вечный остаток. Так возмещение ремонта (+) и сам ремонт (−) видны в одной валюте.
+  const cashSums = {};
+  for (const cur of new Set([...Object.keys(receivedSums), ...Object.keys(totalExpSums)]))
+    cashSums[cur] = (receivedSums[cur] || 0) - (totalExpSums[cur] || 0);
 
   // Заработано за месяц — доля ВСЕХ активных/завершённых аренд (в т.ч. выданных ранее),
   //   приходящаяся на выбранный месяц.
@@ -299,6 +310,7 @@ export default function Finances() {
     const header = ['Дата', 'Тип', 'Машина/Категория', 'Описание', 'Валюта', 'Сумма'];
     const all = [];
     repRentals.forEach((r) => all.push([r.issued_at, 'Доход аренды', r.car_name, `Аренда: ${r.client_name}`, r.currency, (Number(r.amount) || 0) / 100]));
+    repOtherPayments.forEach((p) => all.push([p.paid_at, 'Прочий доход', PAYMENT_KIND_LABELS[p.kind] || p.kind || '', p.note || '', p.currency, (Number(p.amount) || 0) / 100]));
     repCarExp.forEach((e) => all.push([e.date, 'Расход машины', e.car_name || '', `${e.category || ''} ${e.description || ''}`.trim(), e.currency, (Number(e.amount) || 0) / 100]));
     repOffExp.forEach((e) => all.push([e.date, 'Расход офиса', e.category || '', e.description || '', e.currency, (Number(e.amount) || 0) / 100]));
     all.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
@@ -313,6 +325,8 @@ export default function Finances() {
   );
   const repCarExp = carExp.filter(e => e.date >= reportFrom && e.date <= reportTo);
   const repOffExp = offExp.filter(e => e.date >= reportFrom && e.date <= reportTo);
+  // Неарендные поступления (возмещения/штрафы/прочее) за период — для «Движения денег».
+  const repOtherPayments = payments.filter(p => (p.kind ?? 'rental') !== 'rental' && p.paid_at >= reportFrom && p.paid_at <= reportTo);
 
   const repIncome = sumByCurrency(repRentals);
   const repCarExpSums = sumByCurrency(repCarExp);
@@ -369,8 +383,12 @@ export default function Finances() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 20, alignItems: 'start' }}>
           <div className="card" style={{ padding: '12px 16px', borderLeft: '3px solid #3B6D11' }}>
             <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 6, fontWeight: 600 }}>Доходы</div>
-            <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em' }}>Получено</div>
-            <div style={{ fontSize: 15, marginBottom: 8 }}><SumLine sums={receivedSums} color="#3B6D11" /></div>
+            <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em' }}>Получено (аренда)</div>
+            <div style={{ fontSize: 15, marginBottom: 8 }}><SumLine sums={receivedRentalSums} color="#3B6D11" /></div>
+            {Object.keys(receivedOtherSums).length > 0 && (<>
+              <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em' }} title="Возмещения ремонта, штрафы и прочее — деньги в кассу, но не за аренду">Прочий приход</div>
+              <div style={{ fontSize: 13, marginBottom: 8, fontWeight: 500 }}><SumLine sums={receivedOtherSums} color="#8a5a1a" /></div>
+            </>)}
             <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em' }}>Заработано за месяц</div>
             <div style={{ fontSize: 14, fontWeight: 500 }}><SumLine sums={earnedSums} color="#3B6D11" /></div>
             <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em', marginTop: 8 }}>Долг клиентов (всего сейчас)</div>
@@ -410,6 +428,10 @@ export default function Finances() {
               if (inc === 0 && exp === 0) return null;
               return <div key={cur} style={{ fontSize: 13, fontWeight: 500, color: profit >= 0 ? '#3B6D11' : '#993C1D' }}>{fmtMoney(profit, cur)}</div>;
             })}
+            <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em', marginTop: 10 }} title="Все поступления за месяц (аренда + прочее) минус все расходы, по каждой валюте. Движение налички за месяц, не остаток.">Касса за месяц (приход − расход)</div>
+            {CURRENCIES.filter((cur) => cashSums[cur] != null).map((cur) => (
+              <div key={cur} style={{ fontSize: 13, fontWeight: 500, color: (cashSums[cur] || 0) >= 0 ? '#3B6D11' : '#993C1D' }}>{fmtMoney(cashSums[cur] || 0, cur)}</div>
+            ))}
           </div>
         </div>
 

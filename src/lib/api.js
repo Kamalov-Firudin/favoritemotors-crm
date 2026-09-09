@@ -235,13 +235,23 @@ export const rentals = {
 };
 
 // ─── Платежи (кассовый журнал) ────────────────────────────────────────────
+// Категории платежа: стабильные ASCII-ключи + русские подписи для UI.
+// Только 'rental' идёт в долг клиента; остальное — прочий приход в кассу.
+export const PAYMENT_KINDS = ['rental', 'damage', 'fine', 'other'];
+export const PAYMENT_KIND_LABELS = { rental: 'Аренда', damage: 'Повреждение', fine: 'Штраф', other: 'Прочее' };
+
 // rentals.paid — это КЭШ-итог. Единственный писатель paid — этот модуль:
 // recalcRentalPaid пересчитывает paid как сумму всех платежей аренды.
 // Депозит (deposit) сюда НЕ входит — он возвратный, не доход.
 async function recalcRentalPaid(rental_id) {
-  // только живые платежи: скрытые в корзину (deleted_at) в долг не входят
-  const rows = await fetchAll(() => supabase.from('payments').select('amount').eq('rental_id', rental_id).is('deleted_at', null));
-  const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  // В долг клиента идут ТОЛЬКО арендные платежи (kind='rental').
+  // Повреждение/штраф/прочее — это не оплата аренды, в долг не входят.
+  // Скрытые в корзину (deleted_at) тоже не считаем. NULL-kind трактуем как 'rental'
+  // (страховка на случай строк до миграции — их быть не должно).
+  const rows = await fetchAll(() => supabase.from('payments').select('amount, kind').eq('rental_id', rental_id).is('deleted_at', null));
+  const total = rows
+    .filter((r) => (r.kind ?? 'rental') === 'rental')
+    .reduce((s, r) => s + (Number(r.amount) || 0), 0);
   const { error } = await supabase.from('rentals').update({ paid: total }).eq('id', rental_id);
   if (error) throw new Error(error.message);
   return total;
@@ -264,14 +274,16 @@ export const payments = {
     .order('paid_at', { ascending: false }).order('id', { ascending: false })),
 
   // добавить платёж → пишем в журнал и синхронно поднимаем кэш rentals.paid
-  add: async ({ rental_id, paid_at, amount, currency, note }) => {
+  // kind: rental (по умолчанию) | damage | fine | other. Неарендные в долг не идут.
+  add: async ({ rental_id, paid_at, amount, currency, note, kind }) => {
     const amt = Number(amount) || 0;
+    const k = PAYMENT_KINDS.includes(kind) ? kind : 'rental';
     const { data, error } = await supabase.from('payments')
-      .insert({ rental_id, paid_at, amount: amt, currency, note: note || null })
+      .insert({ rental_id, paid_at, amount: amt, currency, note: note || null, kind: k })
       .select().single();
     if (error) throw new Error(error.message);
     const total = await recalcRentalPaid(rental_id);
-    await audit('create', 'payments', data.id, `Платёж ${(amt / 100).toFixed(2)} ${currency} от ${paid_at}`);
+    await audit('create', 'payments', data.id, `Платёж ${(amt / 100).toFixed(2)} ${currency} от ${paid_at}${k !== 'rental' ? ` (${PAYMENT_KIND_LABELS[k]})` : ''}`);
     return { payment: data, paid: total };
   },
 
