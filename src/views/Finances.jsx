@@ -116,6 +116,7 @@ export default function Finances() {
   const [carForm, setCarForm] = useState(null);
   const [offForm, setOffForm] = useState(null);
   const [filterCar, setFilterCar] = useState('');
+  const [showCarry, setShowCarry] = useState(false);
 
   const load = useCallback(async () => {
     const [r, c, ce, oe, pm, ct] = await Promise.all([
@@ -209,6 +210,25 @@ export default function Finances() {
     }
   }
   const carryMonths = Object.keys(carryByMonth).sort();
+
+  // Перенос по машинам (прозрачность начисления):
+  //  carryIn  — доля дохода ЭТОГО месяца от аренд, начатых в ПРОШЛЫХ месяцах (пришло сюда).
+  //  carryOut — доли аренд, приходящиеся на БУДУЩИЕ месяцы (уйдут вперёд), построчно по машине и месяцу.
+  const carryInRows = [];
+  const carryOutRows = [];
+  for (const r of accrualBase) {
+    const split = monthSplit(r);
+    const startYM = (r.issued_at || '').slice(0, 7);
+    const base = { car: r.car_name || '', plate: r.car_plate || '', client: r.client_name || '', currency: r.currency || 'TRY' };
+    if (startYM < month && split[month]) carryInRows.push({ ...base, amount: split[month] });
+    for (const [ym, portion] of Object.entries(split)) {
+      if (ym > month && portion) carryOutRows.push({ ...base, ym, amount: portion });
+    }
+  }
+  carryInRows.sort((a, b) => b.amount - a.amount);
+  carryOutRows.sort((a, b) => a.ym.localeCompare(b.ym) || b.amount - a.amount);
+  const carryInSums = {};
+  for (const r of carryInRows) carryInSums[r.currency] = (carryInSums[r.currency] || 0) + r.amount;
 
   // Генерируем список месяцев за последние 12
   const months = [];
@@ -401,11 +421,16 @@ export default function Finances() {
               <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em', marginTop: 8 }}>Бронь (не в прибыли)</div>
               <div style={{ fontSize: 13 }}><SumLine sums={bookingSums} color="var(--ink-soft)" /></div>
             </>)}
-            {carryMonths.length > 0 && (
+            {(Object.keys(carryInSums).length > 0 || carryMonths.length > 0) && (
               <div style={{ marginTop: 8, borderTop: '1px dashed var(--line)', paddingTop: 6 }}>
+                {Object.keys(carryInSums).length > 0 && (
+                  <div style={{ fontSize: 11, color: '#3B6D11', marginTop: 2 }}>
+                    Пришло из прошлых месяцев: <b>{CURRENCIES.filter((c) => carryInSums[c]).map((c) => fmtMoney(carryInSums[c], c)).join(' · ')}</b>
+                  </div>
+                )}
                 {carryMonths.map((ym) => (
                   <div key={ym} style={{ fontSize: 11, color: '#8a6d3b', marginTop: 2 }}>
-                    Ожидается в {monthLabel(ym)}: <b>{Object.entries(carryByMonth[ym]).map(([cur, v]) => fmtMoney(v, cur)).join(' · ')}</b>
+                    Уйдёт в {monthLabel(ym)}: <b>{Object.entries(carryByMonth[ym]).map(([cur, v]) => fmtMoney(v, cur)).join(' · ')}</b>
                   </div>
                 ))}
               </div>
@@ -419,21 +444,77 @@ export default function Finances() {
             <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em', marginTop: 6 }}>Расходы офиса</div>
             <div style={{ fontSize: 13 }}><SumLine sums={offExpSums} color="#993C1D" /></div>
           </div>
-          <div className="card" style={{ padding: '12px 16px', borderLeft: '3px solid var(--accent)' }}>
-            <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 4 }} title="Заработано за месяц (аренда) + прочий приход (возмещения/штрафы) − расходы. Прочий приход включён, чтобы встречный расход по нему не занижал прибыль.">Прибыль (доход − расходы)</div>
+          <div className="card" style={{ padding: '12px 16px', borderLeft: '3px solid var(--accent)', background: 'var(--paper)' }}>
+            <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 2, fontWeight: 600 }} title="Заработано за месяц (аренда, по начислению) + прочий приход − расходы. Главный итог: как отработал месяц.">ПРИБЫЛЬ за месяц</div>
+            <div style={{ fontSize: 10, color: 'var(--ink-soft)', marginBottom: 4 }}>доход − расходы · смотреть в конце месяца</div>
             {CURRENCIES.map((cur) => {
               const inc = (earnedSums[cur] || 0) + (receivedOtherSums[cur] || 0);
               const exp = (carExpSums[cur] || 0) + (filterCar ? 0 : offExpSums[cur] || 0);
               const profit = inc - exp;
               if (inc === 0 && exp === 0) return null;
-              return <div key={cur} style={{ fontSize: 13, fontWeight: 500, color: profit >= 0 ? '#3B6D11' : '#993C1D' }}>{fmtMoney(profit, cur)}</div>;
+              return <div key={cur} style={{ fontSize: 20, fontWeight: 700, color: profit >= 0 ? '#3B6D11' : '#993C1D' }}>{fmtMoney(profit, cur)}</div>;
             })}
-            <div style={{ fontSize: 10, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em', marginTop: 10 }} title="Все поступления за месяц (аренда + прочее) минус все расходы, по каждой валюте. Движение налички за месяц, не остаток.">Касса за месяц (приход − расход)</div>
+            <div style={{ fontSize: 11, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em', marginTop: 12, fontWeight: 600 }} title="Все поступления за месяц (аренда + прочее) минус все расходы, по каждой валюте. Движение налички за месяц, НЕ остаток.">КАССА за месяц</div>
+            <div style={{ fontSize: 10, color: 'var(--ink-soft)', marginBottom: 4 }}>сколько налички прибавилось</div>
             {CURRENCIES.filter((cur) => cashSums[cur] != null).map((cur) => (
-              <div key={cur} style={{ fontSize: 13, fontWeight: 500, color: (cashSums[cur] || 0) >= 0 ? '#3B6D11' : '#993C1D' }}>{fmtMoney(cashSums[cur] || 0, cur)}</div>
+              <div key={cur} style={{ fontSize: 18, fontWeight: 700, color: (cashSums[cur] || 0) >= 0 ? '#3B6D11' : '#993C1D' }}>{fmtMoney(cashSums[cur] || 0, cur)}</div>
             ))}
           </div>
         </div>
+
+        {/* Перенос по машинам — прозрачность начисления «Заработано» */}
+        {(carryInRows.length > 0 || carryOutRows.length > 0) && (
+          <div style={{ marginBottom: 20 }}>
+            <button className="btn ghost sm" onClick={() => setShowCarry((v) => !v)}>
+              {showCarry ? '▾' : '▸'} Перенос по машинам {filterCar ? '' : '(все машины)'} — что пришло в {monthLabel(month)} и что уйдёт вперёд
+            </button>
+            {showCarry && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 10 }}>
+                <div className="card">
+                  <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--line)' }}>
+                    <b style={{ fontSize: 13 }}>Пришло в {monthLabel(month)}</b>
+                    <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 2 }}>доход этого месяца от аренд, начатых в прошлых месяцах</div>
+                  </div>
+                  {carryInRows.length === 0
+                    ? <div className="empty" style={{ padding: 14 }}>Ничего не перенесено на этот месяц</div>
+                    : (
+                      <table>
+                        <thead><tr><th>Машина</th><th>Клиент</th><th style={{ textAlign: 'right' }}>Начислено</th></tr></thead>
+                        <tbody>{carryInRows.map((r, i) => (
+                          <tr key={i}>
+                            <td><b>{r.car}</b> <span className="muted mono">{r.plate}</span></td>
+                            <td className="muted">{r.client}</td>
+                            <td className="mono" style={{ textAlign: 'right', color: '#3B6D11', fontWeight: 500 }}>{fmtMoney(r.amount, r.currency)}</td>
+                          </tr>
+                        ))}</tbody>
+                      </table>
+                    )}
+                </div>
+                <div className="card">
+                  <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--line)' }}>
+                    <b style={{ fontSize: 13 }}>Уйдёт в будущие месяцы</b>
+                    <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 2 }}>доли текущих аренд после {monthLabel(month)}</div>
+                  </div>
+                  {carryOutRows.length === 0
+                    ? <div className="empty" style={{ padding: 14 }}>Ничего не переносится вперёд</div>
+                    : (
+                      <table>
+                        <thead><tr><th>Машина</th><th>Клиент</th><th>Месяц</th><th style={{ textAlign: 'right' }}>Уйдёт</th></tr></thead>
+                        <tbody>{carryOutRows.map((r, i) => (
+                          <tr key={i}>
+                            <td><b>{r.car}</b> <span className="muted mono">{r.plate}</span></td>
+                            <td className="muted">{r.client}</td>
+                            <td className="muted">{monthLabel(r.ym)}</td>
+                            <td className="mono" style={{ textAlign: 'right', color: '#8a6d3b', fontWeight: 500 }}>{fmtMoney(r.amount, r.currency)}</td>
+                          </tr>
+                        ))}</tbody>
+                      </table>
+                    )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
 
