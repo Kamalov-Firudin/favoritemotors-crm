@@ -10,7 +10,7 @@ const CATEGORIES = ['Обычный', 'Постоянный', 'Лояльный'
 const EMPTY = {
   first_name: '', last_name: '', middle_name: '', phone: '', phone2: '', email: '',
   birth_date: '', source: '', category: 'Обычный',
-  passport_number: '', country: '',
+  passport_number: '', passport_issued: '', country: '',
   license_number: '', license_issued: '',
   discount: '', note: '',
 };
@@ -61,7 +61,7 @@ export default function Clients() {
       phone: t(form.phone), phone2: t(form.phone2), email: t(form.email),
       birth_date: t(form.birth_date) || null,
       source: t(form.source),
-      passport_number: t(form.passport_number), country: t(form.country),
+      passport_number: t(form.passport_number), passport_issued: t(form.passport_issued) || null, country: t(form.country),
       license_number: t(form.license_number),
       license_issued: t(form.license_issued) || null,
       note: t(form.note),
@@ -153,9 +153,10 @@ export default function Clients() {
               <div className="field"><label>Скидка, %</label><input value={form.discount} onChange={set('discount')} placeholder="0" /></div>
 
               <div className="field"><label>Номер паспорта</label><input value={form.passport_number} onChange={set('passport_number')} /></div>
-              <div className="field"><label>Страна</label><input value={form.country} onChange={set('country')} placeholder="Турция, Казахстан..." /></div>
+              <div className="field"><label>Паспорт выдан</label><input type="date" value={form.passport_issued || ''} onChange={set('passport_issued')} /></div>
               <div className="field"><label>Номер вод. удостоверения</label><input value={form.license_number} onChange={set('license_number')} /></div>
               <div className="field"><label>Вод. удв. выдано</label><input type="date" value={form.license_issued || ''} onChange={set('license_issued')} /></div>
+              <div className="field"><label>Страна</label><input value={form.country} onChange={set('country')} placeholder="Турция, Казахстан..." /></div>
               <div className="field full"><label>Примечание</label><textarea value={form.note} onChange={set('note')} /></div>
             </div>
             <div className="modal-foot"><button className="btn ghost" onClick={() => setForm(null)}>Отмена</button><button className="btn" onClick={save}>Сохранить</button></div>

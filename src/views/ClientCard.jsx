@@ -81,6 +81,7 @@ export default function ClientCard({ client, rentals: allRentals, onClose }) {
                 ['Дата рождения', client.birth_date ? fmtDate(client.birth_date) : '—'],
                 ['Страна', client.country || '—'],
                 ['Паспорт', client.passport_number || '—'],
+                ['Паспорт выдан', client.passport_issued ? fmtDate(client.passport_issued) : '—'],
                 ['Вод. удостоверение', client.license_number || '—'],
                 ['Права выданы', client.license_issued ? fmtDate(client.license_issued) : '—'],
                 ['Скидка', client.discount ? `${client.discount}%` : '—'],
