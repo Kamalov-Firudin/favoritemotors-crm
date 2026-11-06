@@ -30,11 +30,23 @@ export default function Trash({ onChange }) {
   const [data, setData] = useState({ clients: [], rentals: [], payments: [], carExp: [], offExp: [], cars: [] });
   const [busy, setBusy] = useState(false);
 
+  // Каждая вкладка грузится независимо: если один список упал, остальные всё равно показываются,
+  // а ошибка видна в плашке (раньше одна ошибка молча опустошала всю корзину).
   const load = useCallback(async () => {
-    const [cl, re, pa, ce, oe, ca] = await Promise.all([
+    const keys = ['clients', 'rentals', 'payments', 'carExp', 'offExp', 'cars'];
+    const labels = { clients: 'Клиенты', rentals: 'Аренды', payments: 'Платежи', carExp: 'Расходы машин', offExp: 'Расходы офиса', cars: 'Машины' };
+    const results = await Promise.allSettled([
       clientsApi.trash(), rentalsApi.trash(), paymentsApi.trash(), carExpenses.trash(), officeExpenses.trash(), carsApi.trash(),
     ]);
-    setData({ clients: cl, rentals: re, payments: pa, carExp: ce, offExp: oe, cars: ca });
+    const next = {};
+    results.forEach((res, i) => {
+      if (res.status === 'fulfilled') next[keys[i]] = res.value || [];
+      else {
+        next[keys[i]] = [];
+        toast(`Корзина, вкладка «${labels[keys[i]]}» не загрузилась: ${res.reason?.message || res.reason}`, 'error');
+      }
+    });
+    setData(next);
   }, []);
   useEffect(() => { load(); }, [load]);
 

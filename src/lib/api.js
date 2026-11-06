@@ -263,15 +263,28 @@ export const payments = {
     .from('payments').select('*').eq('rental_id', rental_id).is('deleted_at', null)
     .order('paid_at', { ascending: false }).order('id', { ascending: false })),
 
-  // живые платежи с car_id аренды — для кассовых отчётов (фильтрация по дате на клиенте)
-  listAll: () => fetchAll(() => supabase
-    .from('payments').select('*, rentals(car_id)').is('deleted_at', null)
-    .order('paid_at', { ascending: false }).order('id', { ascending: false })),
+  // живые платежи с car_id аренды — для кассовых отчётов (фильтрация по дате на клиенте).
+  // Платежи аренд, убранных в корзину, в кассу НЕ входят: аренда в корзине = её не было.
+  // Восстановят аренду из корзины — её платежи вернутся в кассу сами (ничего не удаляем).
+  listAll: async () => {
+    const rows = await fetchAll(() => supabase
+      .from('payments').select('*, rentals(car_id, deleted_at)').is('deleted_at', null)
+      .order('paid_at', { ascending: false }).order('id', { ascending: false }));
+    return rows.filter((p) => p.rentals && !p.rentals.deleted_at);
+  },
 
-  // корзина: скрытые платежи + данные аренды для подписи
-  trash: () => fetchAll(() => supabase
-    .from('payments').select('*, rentals(car_name, client_name)').not('deleted_at', 'is', null)
-    .order('paid_at', { ascending: false }).order('id', { ascending: false })),
+  // корзина: скрытые платежи + данные аренды для подписи.
+  // У rentals НЕТ колонок car_name/client_name (их собирает mapRental) — берём имена
+  // через вложенные связи cars/clients и раскладываем в те же поля, что ждёт Trash.jsx.
+  trash: async () => {
+    const rows = await fetchAll(() => supabase
+      .from('payments').select('*, rentals(issued_at, cars(name), clients(name))').not('deleted_at', 'is', null)
+      .order('paid_at', { ascending: false }).order('id', { ascending: false }));
+    return rows.map((p) => ({
+      ...p,
+      rentals: p.rentals ? { ...p.rentals, car_name: p.rentals.cars?.name, client_name: p.rentals.clients?.name } : null,
+    }));
+  },
 
   // добавить платёж → пишем в журнал и синхронно поднимаем кэш rentals.paid
   // kind: rental (по умолчанию) | damage | fine | other. Неарендные в долг не идут.
