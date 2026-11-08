@@ -7,3 +7,14 @@ backup/*token*.json
 # зависимости и сборка — восстанавливаются из package.json, в git не идут
 node_modules/
 dist/
+
+# бэкапы, дампы, ключи и служебные файлы восстановления — НИКОГДА не коммитить
+backup/out/
+backup/restore-out/
+backup/restore-*/
+schema-dump/
+*.dump
+*.age
+*backup-key*.txt
+old_users*.csv
+favoritemotors-backup-*.json

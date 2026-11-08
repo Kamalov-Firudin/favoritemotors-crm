@@ -12,7 +12,7 @@ import Finances from './views/Finances.jsx';
 import Maintenance from './views/Maintenance.jsx';
 import AuditLog from './views/AuditLog.jsx';
 import Trash from './views/Trash.jsx';
-import { UIRoot, toast } from './lib/ui.jsx';
+import { UIRoot, toast, confirmDialog } from './lib/ui.jsx';
 import { exportBackup } from './lib/backup.js';
 
 export const CURRENCIES = ['EUR', 'USD', 'TRY'];
@@ -117,6 +117,8 @@ export default function App() {
   const goToTab = (t) => { switchTab(t); setNotifOpen(false); };
   const [backingUp, setBackingUp] = useState(false);
   const doBackup = async () => {
+    // Файл не зашифрован: в нём паспорта и телефоны клиентов, все платежи и расходы.
+    if (!(await confirmDialog('Файл бэкапа НЕ зашифрован и содержит персональные данные клиентов (паспорта, телефоны) и все финансы. Храните его только у себя, не пересылайте в мессенджеры и не оставляйте в «Загрузках». Скачать?', { okText: 'Скачать' }))) return;
     setBackingUp(true);
     try {
       const tables = await exportBackup();
@@ -173,7 +175,7 @@ export default function App() {
           ))}
         </nav>
         <div className="rail-foot">
-          {perms.canWrite && (
+          {perms.canPurge && ( /* только администратор; роль проверяется и внутри exportBackup */
             <button className="backup-btn" onClick={doBackup} disabled={backingUp}>
               {backingUp ? 'Выгрузка...' : '↓ Скачать бэкап'}
             </button>

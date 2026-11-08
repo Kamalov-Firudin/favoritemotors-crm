@@ -226,6 +226,11 @@ export const rentals = {
     await audit('update', 'rentals', id, `Аренда восстановлена из корзины: ${label}`);
   },
   purge: async (id) => {
+    // Временная защита (этап 0): FK payments.rental_id → rentals стоит ON DELETE CASCADE,
+    // поэтому физическое удаление аренды молча стёрло бы её платежи — в т.ч. лежащие в корзине.
+    // Считаем ВСЕ платежи аренды, без фильтра по deleted_at. Если подсчёт не удался — не удаляем.
+    const n = await payments.countForRental(id);
+    if (n > 0) throw new Error(`PAYMENTS_EXIST|${n}`);
     const { data: r } = await supabase.from('rentals').select('issued_at, due_at, returned_at, cars(name, plate), clients(name)').eq('id', id).single();
     const label = r ? `${r.cars?.name || ''}${r.cars?.plate ? ' ' + r.cars.plate : ''} — ${r.clients?.name || ''} · ${r.issued_at || ''}${r.returned_at || r.due_at ? '–' + (r.returned_at || r.due_at) : ''}` : `#${id}`;
     const { error } = await supabase.from('rentals').delete().eq('id', id);
@@ -258,6 +263,22 @@ async function recalcRentalPaid(rental_id) {
 }
 
 export const payments = {
+  // Сколько платежей у аренды ВСЕГО: живые + в корзине (deleted_at не фильтруем намеренно).
+  countForRental: async (rental_id) => {
+    const { count, error } = await supabase.from('payments').select('id', { count: 'exact', head: true }).eq('rental_id', rental_id);
+    if (error) throw new Error('Не удалось проверить платежи аренды: ' + error.message);
+    if (count === null || count === undefined) throw new Error('Не удалось проверить платежи аренды');
+    return count;
+  },
+  // То же для списка аренд (для корзины): { rental_id: число_платежей }, включая скрытые платежи.
+  countByRentals: async (rentalIds) => {
+    const out = {};
+    if (!rentalIds.length) return out;
+    const rows = await fetchAll(() => supabase.from('payments').select('id, rental_id').in('rental_id', rentalIds).order('id'));
+    for (const p of rows) out[p.rental_id] = (out[p.rental_id] || 0) + 1;
+    return out;
+  },
+
   // живые платежи аренды, свежие сверху (скрытые в корзину не показываем)
   listByRental: (rental_id) => fetchAll(() => supabase
     .from('payments').select('*').eq('rental_id', rental_id).is('deleted_at', null)

@@ -7,6 +7,10 @@ import { toast, confirmDialog } from '../lib/ui.jsx';
 // Превращаем сырые ошибки БД в понятный текст
 function humanError(e, tab) {
   const m = String(e?.message || '');
+  if (m.startsWith('PAYMENTS_EXIST|')) {
+    const n = m.split('|')[1];
+    return `Нельзя удалить навсегда: у аренды есть платежи (${n}, включая скрытые в корзину). Удаление стёрло бы историю денег. Аренда остаётся в корзине.`;
+  }
   if (m.includes('foreign key') || m.includes('_fkey') || m.includes('violates')) {
     if (tab === 'clients') return 'Нельзя удалить навсегда: по клиенту есть аренды в истории. Сначала удалите его аренды — или оставьте клиента скрытым в корзине.';
     if (tab === 'cars') return 'Нельзя удалить навсегда: по машине есть аренды или расходы в истории. Сначала удалите их — или оставьте машину скрытой.';
@@ -29,6 +33,9 @@ export default function Trash({ onChange }) {
   const [tab, setTab] = useState('clients');
   const [data, setData] = useState({ clients: [], rentals: [], payments: [], carExp: [], offExp: [], cars: [] });
   const [busy, setBusy] = useState(false);
+  // Число платежей (включая скрытые) у каждой аренды в корзине — чтобы не дать удалить её навсегда.
+  // null = ещё не загружено или не удалось: тогда кнопка тоже заблокирована (безопасный отказ).
+  const [rentalPayCounts, setRentalPayCounts] = useState(null);
 
   // Каждая вкладка грузится независимо: если один список упал, остальные всё равно показываются,
   // а ошибка видна в плашке (раньше одна ошибка молча опустошала всю корзину).
@@ -47,6 +54,12 @@ export default function Trash({ onChange }) {
       }
     });
     setData(next);
+    try {
+      setRentalPayCounts(await paymentsApi.countByRentals((next.rentals || []).map((r) => r.id)));
+    } catch (e) {
+      setRentalPayCounts(null);
+      toast('Не удалось проверить платежи аренд — удаление аренд навсегда заблокировано: ' + (e.message || e), 'error');
+    }
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -107,7 +120,14 @@ export default function Trash({ onChange }) {
                   <td>{renderRow(r)}</td>
                   <td><div className="row-actions">
                     <button className="btn ghost sm" disabled={busy} onClick={() => restore(r.id)}>↩ Восстановить</button>
-                    {canPurge && <button className="btn danger sm" disabled={busy} onClick={() => purge(r.id)}>Удалить навсегда</button>}
+                    {canPurge && (() => {
+                      if (tab !== 'rentals') return <button className="btn danger sm" disabled={busy} onClick={() => purge(r.id)}>Удалить навсегда</button>;
+                      const n = rentalPayCounts ? (rentalPayCounts[r.id] || 0) : null;
+                      if (n === 0) return <button className="btn danger sm" disabled={busy} onClick={() => purge(r.id)}>Удалить навсегда</button>;
+                      return <button className="btn danger sm" disabled title={n === null ? 'Проверка платежей не выполнена' : 'У аренды есть платежи — удалить навсегда нельзя, чтобы не потерять историю денег'}>
+                        {n === null ? 'Проверка…' : `Есть платежи: ${n}`}
+                      </button>;
+                    })()}
                   </div></td>
                 </tr>
               ))}

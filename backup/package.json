@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Автобэкап Supabase → Google Drive",
   "dependencies": {
+    "age-encryption": "^0.3.1",
     "googleapis": "^144.0.0"
   }
 }

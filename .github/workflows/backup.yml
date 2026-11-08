@@ -14,7 +14,7 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4   # нужен и src/lib/backupManifest.js
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -30,4 +30,8 @@ jobs:
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
           DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+          # Шифрование age (этап 0). Выключено, пока в Settings → Variables нет BACKUP_ENCRYPT=1.
+          # AGE_RECIPIENT — ПУБЛИЧНЫЙ ключ age1… (им можно только зашифровать). Приватный ключ сюда не класть никогда.
+          AGE_RECIPIENT: ${{ secrets.AGE_RECIPIENT }}
+          BACKUP_ENCRYPT: ${{ vars.BACKUP_ENCRYPT }}
         run: node backup-to-drive.mjs

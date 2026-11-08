@@ -1,0 +1,74 @@
+name: pg_dump to Google Drive (ручной запуск, тест)
+
+# ЭТАП 0: только ручной запуск (кнопка Run workflow). Расписания НЕТ намеренно.
+# Расписание добавлять только после: (1) успешной расшифровки дампа, (2) пробного
+# восстановления в ТЕСТОВЫЙ проект Supabase. См. docs/PG_DUMP_SETUP.md.
+#
+# Репозиторий публичный → логи публичные. Здесь печатаются только версия сервера,
+# число объектов в дампе, размер файла и статус. Строка подключения — только в Secrets
+# (GitHub сам маскирует значения секретов в логах). Незашифрованный дамп никуда не загружается.
+#
+# Нужные секреты: SUPABASE_DB_URL (Session Pooler, порт 5432), AGE_RECIPIENT (публичный age1…),
+# GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, DRIVE_FOLDER_ID.
+on:
+  workflow_dispatch:
+
+jobs:
+  pg_dump:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      AGE_RECIPIENT: ${{ secrets.AGE_RECIPIENT }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Проверить секреты (без вывода значений)
+        run: |
+          test -n "$SUPABASE_DB_URL" || { echo "❌ нет секрета SUPABASE_DB_URL"; exit 1; }
+          case "$AGE_RECIPIENT" in age1*) ;; *) echo "❌ AGE_RECIPIENT пустой или не age1…"; exit 1;; esac
+
+      - name: Установить age и клиент PostgreSQL той же версии, что сервер
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age postgresql-common > /dev/null
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y > /dev/null
+          # узнаём версию сервера любым доступным psql
+          sudo apt-get install -y -qq postgresql-client > /dev/null
+          SV=$(psql "$SUPABASE_DB_URL" -tAc "show server_version_num" | cut -c1-2)
+          test -n "$SV" || { echo "❌ не удалось подключиться к базе (проверьте Session Pooler URI)"; exit 1; }
+          echo "Версия сервера PostgreSQL: $SV"
+          sudo apt-get install -y -qq "postgresql-client-$SV" > /dev/null
+          echo "PGBIN=/usr/lib/postgresql/$SV/bin" >> "$GITHUB_ENV"
+
+      - name: pg_dump (схема public + данные, формат custom)
+        run: |
+          umask 077
+          "$PGBIN/pg_dump" "$SUPABASE_DB_URL" --format=custom --no-owner --schema=public --file=db.dump
+          N=$("$PGBIN/pg_restore" --list db.dump | grep -vc '^;')
+          echo "Объектов в дампе: $N"
+          "$PGBIN/pg_restore" --list db.dump | grep -q 'TABLE DATA public payments' || { echo "❌ в дампе нет данных payments"; exit 1; }
+          echo "payments в дампе: есть"
+
+      - name: Зашифровать (age, публичный ключ) и удалить открытый файл
+        run: |
+          STAMP=$(TZ=Europe/Istanbul date +%Y-%m-%d_%H-%M)
+          OUT="favoritemotors-pgdump-$STAMP.dump.age"
+          age -r "$AGE_RECIPIENT" -o "$OUT" db.dump
+          shred -u db.dump 2>/dev/null || rm -f db.dump
+          head -c 21 "$OUT" | grep -q 'age-encryption.org/v1' || { echo "❌ файл не похож на age"; exit 1; }
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+          echo "Зашифровано: $(stat -c %s "$OUT") байт"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Загрузить в Google Drive
+        working-directory: backup
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+        run: |
+          npm install --no-audit --no-fund --silent
+          node upload-to-drive.mjs "../$OUT"
