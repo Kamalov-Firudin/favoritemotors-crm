@@ -46,7 +46,9 @@ export const clientBalance = (rentals, clientId, excludeId) => {
   const byCur = {};
   for (const r of rentals || []) {
     if (r.client_id !== clientId) continue;
-    if (r.status === 'cancelled') continue;
+    // Долг — только по выданным (active) и завершённым арендам, как на экране «Финансы».
+    // Бронь ещё не аренда: неоплаченная бронь — не долг. Отменённые тоже не считаются.
+    if (r.status !== 'active' && r.status !== 'completed') continue;
     if (excludeId && r.id === excludeId) continue;
     const d = Number(r.amount || 0) - Number(r.paid || 0);
     byCur[r.currency] = (byCur[r.currency] || 0) + d;

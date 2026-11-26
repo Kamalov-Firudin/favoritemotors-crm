@@ -138,16 +138,22 @@ export default function Rentals({ mode, onChange }) {
     }
     // пересчёт суммы при продлении
     let amount = r.amount;
+    let rental_price = r.rental_price;
     if (r.rental_price && r.due_at) {
       const oldDays = rentalDaysT(r.issued_at, r.pickup_time, r.due_at, r.return_time);
       const newDays = rentalDaysT(r.issued_at, r.pickup_time, newDue, r.return_time);
-      amount = oldDays > 0 ? Math.round(r.rental_price * newDays / oldDays) + (r.extra_fee || 0) : r.amount;
+      if (oldDays > 0) {
+        // Цена за срок тоже меняется: она теперь за НОВЫЙ срок. Иначе при возврате
+        // пересчёт «цена × факт / план» откатывал итог к старой сумме → фантомная переплата.
+        rental_price = Math.round(r.rental_price * newDays / oldDays);
+        amount = rental_price + (r.extra_fee || 0);
+      }
     } else if (r.daily_price) {
       const days = rentalDaysT(r.issued_at, r.pickup_time, newDue, r.return_time);
       amount = r.daily_price * days + (r.extra_fee || 0);
     }
     try {
-      await rentalsApi.update({ ...r, due_at: newDue, amount });
+      await rentalsApi.update({ ...r, due_at: newDue, amount, rental_price });
     } catch (e) {
       const m = String(e?.message || '').match(/CONFLICT\|([^|]*)\|([^|]*)\|([^|]*)/);
       if (m) { toast(`Нельзя продлить: на эти даты уже есть бронь этой машины (${m[1]}). Выберите другую дату.`, 'error'); return; }

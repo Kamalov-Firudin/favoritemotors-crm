@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { fmtMoney, fmtDate, clientBalance } from '../App.jsx';
+import { usePerms } from '../lib/perms.js';
+import PaymentsPanel from './PaymentsPanel.jsx';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -27,9 +29,12 @@ function renderSums(sums, color) {
 }
 
 // Карточка клиента: сведения + история аренд (какие машины брал, когда, суммы, долг).
-// Данные только для чтения — все правки идут через раздел «Аренда».
-export default function ClientCard({ client, rentals: allRentals, onClose }) {
+// Аренды здесь не редактируются (это раздел «Аренда»), но долг можно оплатить прямо из истории:
+// кнопка «Оплата» открывает то же окно «Платежи», что и в разделе «Аренда».
+export default function ClientCard({ client, rentals: allRentals, onClose, onChanged }) {
   const [tab, setTab] = useState('info');
+  const [paymentsFor, setPaymentsFor] = useState(null);
+  const { canWrite } = usePerms();
 
   const clientRentals = allRentals
     .filter((r) => r.client_id === client.id)
@@ -123,18 +128,23 @@ export default function ClientCard({ client, rentals: allRentals, onClose }) {
               ? <div className="empty"><b>Аренд ещё не было</b></div>
               : (
                 <table>
-                  <thead><tr><th>Машина</th><th>Выдана</th><th>Возврат</th><th>Сумма</th><th>Долг</th><th>Статус</th></tr></thead>
+                  <thead><tr><th>Машина</th><th>Выдана</th><th>Возврат</th><th>Сумма</th><th>Долг</th><th>Статус</th><th></th></tr></thead>
                   <tbody>
                     {clientRentals.map((r) => {
                       const d = Number(r.amount || 0) - Number(r.paid || 0);
+                      // Долг/переплата — только у выданных и завершённых (бронь — ещё не долг)
+                      const counts = r.status === 'active' || r.status === 'completed';
                       return (
                         <tr key={r.id}>
                           <td><b>{r.car_name || '—'}</b>{r.car_plate ? <span className="muted mono" style={{ marginLeft: 6 }}>{r.car_plate}</span> : ''}</td>
                           <td className="mono">{fmtDate(r.issued_at)}</td>
                           <td className="mono muted">{r.returned_at ? fmtDate(r.returned_at) : (r.due_at ? `до ${fmtDate(r.due_at)}` : '—')}</td>
                           <td className="mono">{fmtMoney(r.amount, r.currency)}</td>
-                          <td className="mono">{d > 0 ? <span style={{ color: 'var(--warn)' }}>{fmtMoney(d, r.currency)}</span> : d < 0 ? <span style={{ color: '#3B6D11' }}>+{fmtMoney(-d, r.currency)}</span> : <span style={{ color: 'var(--ink-soft)' }}>—</span>}</td>
+                          <td className="mono">{!counts ? <span style={{ color: 'var(--ink-soft)' }}>—</span> : d > 0 ? <span style={{ color: 'var(--warn)' }}>{fmtMoney(d, r.currency)}</span> : d < 0 ? <span style={{ color: '#3B6D11' }}>+{fmtMoney(-d, r.currency)}</span> : <span style={{ color: 'var(--ink-soft)' }}>—</span>}</td>
                           <td><span className={`badge ${RENTAL_STATUS[r.status]?.[1] || 'done'}`}>{RENTAL_STATUS[r.status]?.[0] || r.status}</span></td>
+                          <td>{canWrite && counts && d !== 0 && (
+                            <button className="btn ghost sm" onClick={() => setPaymentsFor(r)}>{d > 0 ? 'Оплата' : 'Возврат'}</button>
+                          )}</td>
                         </tr>
                       );
                     })}
@@ -148,6 +158,14 @@ export default function ClientCard({ client, rentals: allRentals, onClose }) {
           <button className="btn ghost" onClick={onClose}>Закрыть</button>
         </div>
       </div>
+      {/* окно платежей — поверх карточки (вне .modal, чтобы не обрезалось прокруткой) */}
+      {paymentsFor && (
+          <PaymentsPanel
+            rental={paymentsFor}
+            onClose={() => setPaymentsFor(null)}
+            onChanged={() => { onChanged?.(); }}
+          />
+        )}
     </div>
   );
 }

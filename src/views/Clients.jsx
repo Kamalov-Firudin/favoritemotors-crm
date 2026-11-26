@@ -22,9 +22,9 @@ export default function Clients() {
   const [form, setForm] = useState(null);
   const [cardClient, setCardClient] = useState(null); // открытая карточка клиента
   const [q, setQ] = useState('');
-  const [debtorsOnly, setDebtorsOnly] = useState(false);
+  const [balFilter, setBalFilter] = useState('all'); // all | debt | credit
   const [page, setPage] = useState(1);
-  useEffect(() => { setPage(1); }, [q, debtorsOnly]);
+  useEffect(() => { setPage(1); }, [q, balFilter]);
   const PAGE_SIZE = 50;
 
   const load = useCallback(async () => {
@@ -82,7 +82,8 @@ export default function Clients() {
 
   const term = q.trim().toLowerCase();
   const filtered = rows.filter((c) => {
-    if (debtorsOnly && !isDebtor(balanceOf(c.id))) return false;
+    if (balFilter === 'debt' && !isDebtor(balanceOf(c.id))) return false;
+    if (balFilter === 'credit' && !hasCredit(balanceOf(c.id))) return false;
     if (!term) return true;
     return [c.name, c.first_name, c.last_name, c.middle_name, c.phone, c.phone2, c.email]
       .some((v) => v && String(v).toLowerCase().includes(term));
@@ -98,7 +99,11 @@ export default function Clients() {
 
       <div className="toolbar">
         <input className="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск: фамилия, телефон, email..." />
-        <label className="toggle"><input type="checkbox" checked={debtorsOnly} onChange={(e) => setDebtorsOnly(e.target.checked)} /> Только должники</label>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {[['all', 'Все'], ['debt', 'Должники'], ['credit', 'Переплата']].map(([k, label]) => (
+            <button key={k} className={`btn sm ${balFilter === k ? '' : 'ghost'}`} onClick={() => setBalFilter(k)}>{label}</button>
+          ))}
+        </div>
       </div>
 
       <div className="card">
@@ -134,7 +139,7 @@ export default function Clients() {
         {filtered.length > 0 && <Pagination page={page} total={filtered.length} pageSize={PAGE_SIZE} onPage={setPage} />}
       </div>
 
-      {cardClient && <ClientCard client={cardClient} rentals={rentals} onClose={() => setCardClient(null)} />}
+      {cardClient && <ClientCard client={cardClient} rentals={rentals} onClose={() => setCardClient(null)} onChanged={load} />}
 
       {form && (
         <div className="overlay">
