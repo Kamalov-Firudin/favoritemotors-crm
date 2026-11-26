@@ -163,6 +163,7 @@ export default function ClientCard({ client, rentals: allRentals, onClose, onCha
       {paymentsFor && (
           <PaymentsPanel
             rental={paymentsFor}
+            initialMode={Number(paymentsFor.amount || 0) - Number(paymentsFor.paid || 0) < 0 ? 'refund' : 'pay'}
             onClose={() => setPaymentsFor(null)}
             onChanged={() => { onChanged?.(); }}
           />
