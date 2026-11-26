@@ -67,6 +67,7 @@ export default function PaymentsPanel({ rental, onClose, onChanged }) {
         <div className="modal-body">
           <div className="field full" style={{ gridColumn: '1 / -1' }}>
             <div style={{ background: 'var(--paper)', borderRadius: 8, padding: '10px 14px', fontSize: 13 }}>
+              <span className="mono muted" style={{ marginRight: 6 }}>Аренда №{rental.id}</span>
               <b>{rental.car_name}</b>{rental.car_plate ? ` · ${rental.car_plate}` : ''} — {rental.client_name}
               <div style={{ marginTop: 6, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                 <span>Сумма аренды: <b>{fmtMoney(rental.amount, cur)}</b></span>

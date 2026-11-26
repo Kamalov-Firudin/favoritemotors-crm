@@ -128,7 +128,7 @@ export default function ClientCard({ client, rentals: allRentals, onClose, onCha
               ? <div className="empty"><b>Аренд ещё не было</b></div>
               : (
                 <table>
-                  <thead><tr><th>Машина</th><th>Выдана</th><th>Возврат</th><th>Сумма</th><th>Долг</th><th>Статус</th><th></th></tr></thead>
+                  <thead><tr><th>№</th><th>Машина</th><th>Выдана</th><th>Возврат</th><th>Сумма</th><th>Долг</th><th>Статус</th><th></th></tr></thead>
                   <tbody>
                     {clientRentals.map((r) => {
                       const d = Number(r.amount || 0) - Number(r.paid || 0);
@@ -136,6 +136,7 @@ export default function ClientCard({ client, rentals: allRentals, onClose, onCha
                       const counts = r.status === 'active' || r.status === 'completed';
                       return (
                         <tr key={r.id}>
+                          <td className="mono muted">{r.id}</td>
                           <td><b>{r.car_name || '—'}</b>{r.car_plate ? <span className="muted mono" style={{ marginLeft: 6 }}>{r.car_plate}</span> : ''}</td>
                           <td className="mono">{fmtDate(r.issued_at)}</td>
                           <td className="mono muted">{r.returned_at ? fmtDate(r.returned_at) : (r.due_at ? `до ${fmtDate(r.due_at)}` : '—')}</td>
