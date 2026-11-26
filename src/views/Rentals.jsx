@@ -21,11 +21,12 @@ export default function Rentals({ mode, onChange }) {
   const [form, setForm] = useState(null);
   const [filterCar, setFilterCar] = useState('');
   const [filterClient, setFilterClient] = useState('');
+  const [filterNum, setFilterNum] = useState(''); // поиск по номеру аренды
   const [filterFrom, setFilterFrom] = useState('');
   const [filterTo, setFilterTo] = useState('');
   const [showHistory, setShowHistory] = useState(false);
   const [page, setPage] = useState(1);
-  useEffect(() => { setPage(1); }, [filterCar, filterClient, filterFrom, filterTo, showHistory, mode]);
+  useEffect(() => { setPage(1); }, [filterCar, filterClient, filterNum, filterFrom, filterTo, showHistory, mode]);
 
   const [returnForm, setReturnForm] = useState(null); // форма возврата
   const [issueForm, setIssueForm] = useState(null);   // форма выдачи (пробег)
@@ -175,7 +176,10 @@ export default function Rentals({ mode, onChange }) {
   const debt = (r) => Number(r.amount) - Number(r.paid);
   const overdue = (r) => r.status === 'active' && r.due_at && r.due_at < today();
 
+  const numQuery = filterNum.trim().replace(/^№\s*/, '');
   let rows = list.filter((r) => {
+    // Поиск по номеру находит аренду в любом статусе (идёт / завершена / отменена) — номер однозначен.
+    if (numQuery) return String(r.id) === numQuery;
     if (isBooking && r.status !== 'reserved') return false;
     if (!isBooking) {
       if (showHistory) { if (r.status !== 'completed' && r.status !== 'cancelled') return false; }
@@ -195,8 +199,8 @@ export default function Rentals({ mode, onChange }) {
   const totalRows = rows.length;
   const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const hasFilters = filterCar || filterClient || filterFrom || filterTo;
-  const clearFilters = () => { setFilterCar(''); setFilterClient(''); setFilterFrom(''); setFilterTo(''); };
+  const hasFilters = filterCar || filterClient || filterNum || filterFrom || filterTo;
+  const clearFilters = () => { setFilterCar(''); setFilterClient(''); setFilterNum(''); setFilterFrom(''); setFilterTo(''); };
 
   const statusBadge = (r) => {
     if (r.status === 'reserved') return <span className="badge out">Бронь</span>;
@@ -220,6 +224,10 @@ export default function Rentals({ mode, onChange }) {
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <div className="field" style={{ margin: 0 }}>
+          <label style={{ fontSize: 11 }}>№ аренды</label>
+          <input value={filterNum} onChange={(e) => setFilterNum(e.target.value)} placeholder="например 179" inputMode="numeric" style={{ width: 120 }} />
+        </div>
         <div className="field" style={{ margin: 0, minWidth: 160 }}>
           <label style={{ fontSize: 11 }}>Машина</label>
           <select value={filterCar} onChange={(e) => setFilterCar(e.target.value)}>
@@ -253,12 +261,13 @@ export default function Rentals({ mode, onChange }) {
         ) : (
           <table>
             <thead><tr>
-              <th>Машина</th><th>Клиент</th><th>{isBooking ? 'С' : 'Выдана'}</th><th>{isBooking ? 'По' : 'Возврат'}</th>
+              <th>№</th><th>Машина</th><th>Клиент</th><th>{isBooking ? 'С' : 'Выдана'}</th><th>{isBooking ? 'По' : 'Возврат'}</th>
               <th>Выдача</th><th>Приём</th><th>Пробег</th><th>Сумма</th><th>Долг</th><th>Статус</th><th></th>
             </tr></thead>
             <tbody>
               {pageRows.map((r) => (
                 <tr key={r.id}>
+                  <td className="mono muted">{r.id}</td>
                   <td><b>{r.car_name}</b> <span className="muted mono">{r.car_plate || ''}</span></td>
                   <td>{r.client_name}</td>
                   <td className="mono">{fmtDate(r.issued_at)}</td>
